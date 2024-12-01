@@ -73,16 +73,13 @@ impl FromStr for Input {
         if text.is_empty() {
             return Err(ParseInputError::EmptyInput);
         }
-        let mut lefts = Vec::new();
-        let mut rights = Vec::new();
-        for line in text.lines() {
-            let (left_str, right_str) =
-                line.split_once(' ').ok_or(ParseInputError::InvalidFormat)?;
-            let left = left_str.parse()?;
-            let right = right_str.trim_start().parse()?;
-            lefts.push(left);
-            rights.push(right);
-        }
+        let (mut lefts, mut rights) = text
+            .lines()
+            .map(|line| {
+                let (left, right) = line.split_once("   ").ok_or(ParseInputError::InvalidFormat)?;
+                Ok((left.parse::<u32>()?, right.parse::<u32>()?))
+            })
+            .collect::<Result<(Vec<_>, Vec<_>), ParseInputError>>()?;
         lefts.sort_unstable();
         rights.sort_unstable();
         Ok(Self { lefts, rights })
