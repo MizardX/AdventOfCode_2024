@@ -1,0 +1,11 @@
+[package]
+name = "aoc_rust_2024"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+thiserror = "2.0.3"
+
+[[bin]]
+name = "main"
+
