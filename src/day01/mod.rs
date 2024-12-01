@@ -22,12 +22,8 @@ pub fn run() {
 
 #[must_use]
 pub fn part_1(input: &Input) -> u32 {
-    let mut lefts: Vec<_> = input.lefts.clone();
-    lefts.sort_unstable();
-    let mut rights: Vec<_> = input.rights.clone();
-    rights.sort_unstable();
     let mut sum = 0;
-    for (&a, &b) in lefts.iter().zip(rights.iter()) {
+    for (&a, &b) in input.lefts.iter().zip(&input.rights) {
         sum += a.abs_diff(b);
     }
     sum
@@ -46,7 +42,7 @@ pub fn part_2(input: &Input) -> u32 {
         freq_right[(right - MIN) as usize] += 1;
     }
     let mut sum = 0;
-    for (i, (&left, &right)) in freq_left.iter().zip(freq_right.iter()).enumerate() {
+    for (i, (&left, &right)) in freq_left.iter().zip(&freq_right).enumerate() {
         #[allow(clippy::cast_possible_truncation)]
         let x = i as u32 + MIN;
         sum += x * left * right;
@@ -87,6 +83,8 @@ impl FromStr for Input {
             lefts.push(left);
             rights.push(right);
         }
+        lefts.sort_unstable();
+        rights.sort_unstable();
         Ok(Self { lefts, rights })
     }
 }
