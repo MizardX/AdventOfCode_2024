@@ -27,7 +27,7 @@ mod aoclib;
 days! {
     01 => day01,
     02 => day02,
-    //03 => day03,
+    03 => day03,
     //04 => day04,
     //05 => day05,
     //06 => day06,
