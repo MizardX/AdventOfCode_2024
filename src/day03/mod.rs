@@ -1,3 +1,4 @@
+use std::path::Iter;
 use std::str::FromStr;
 use thiserror::Error;
 
@@ -46,83 +47,47 @@ fn parse_mul(part: &str) -> Option<usize> {
 #[must_use]
 pub fn part_2(input: &Input) -> usize {
     let mut sum = 0;
-    let mut s = input.data.as_str();
     let mut enabled = true;
-    loop {
-        match (s.find("mul("), s.find("do()"), s.find("don't()")) {
-            (Some(mul), Some(do_), Some(dont)) => {
-                if mul < do_ && mul < dont {
-                    if enabled {
-                        if let Some(product) = parse_mul(&s[mul+4..]) {
-                            sum += product;
-                        }
-                    }
-                    s = &s[(mul + 4)..];
-                } else if do_ < dont {
-                    enabled = true;
-                    s = &s[do_ + 4..];
-                } else {
-                    enabled = false;
-                    s = &s[dont + 7..];
-                }
-            }
-            (Some(mul), Some(do_), None) => {
-                if mul < do_ {
-                    if enabled {
-                        if let Some(product) = parse_mul(&s[mul+4..]) {
-                            sum += product;
-                        }
-                    }
-                    s = &s[(mul + 4)..];
-                } else {
-                    enabled = true;
-                    s = &s[do_ + 4..];
-                }
-            }
-            (Some(mul), None, Some(dont)) => {
-                if mul < dont {
-                    if enabled {
-                        if let Some(product) = parse_mul(&s[mul+4..]) {
-                            sum += product;
-                        }
-                    }
-                    s = &s[(mul + 4)..];
-                } else {
-                    enabled = false;
-                    s = &s[dont + 7..];
-                }
-            }
-            (Some(mul), None, None) => {
+    let mut s = input.data.as_str();
+    while let Some((pos, pattern)) = find_any(s, &["mul(", "do()", "don't()"]) {
+        match pattern {
+            0 => {
                 if enabled {
-                    if let Some(product) = parse_mul(&s[mul+4..]) {
+                    if let Some(product) = parse_mul(&s[pos + 4..]) {
                         sum += product;
                     }
                 }
-                s = &s[(mul + 4)..];
+                s = &s[pos + 4..];
             }
-            (None, Some(do_), Some(dont)) => {
-                if do_ < dont {
-                    enabled = true;
-                    s = &s[do_ + 4..];
-                } else {
-                    enabled = false;
-                    s = &s[dont + 7..];
-                }
-            }
-            (None, Some(do_), None) => {
+            1 => {
                 enabled = true;
-                s = &s[do_ + 4..];
+                s = &s[pos + 4..];
             }
-            (None, None, Some(dont)) => {
+            2 => {
                 enabled = false;
-                s = &s[dont + 7..];
+                s = &s[pos + 7..];
             }
-            (None, None, None) => {
-                break;
-            }
+            _ => unreachable!(),
         }
     }
     sum
+}
+
+fn find_any<'a>(haystack: &'a str, needles: &[&'a str]) -> Option<(usize, usize)> {
+    let mut min_pos = haystack.len();
+    let mut min_ix = 0;
+    for (ix, needle_str) in needles.iter().enumerate() {
+        if let Some(pos) = haystack.find(needle_str) {
+            if pos < min_pos {
+                min_pos = pos;
+                min_ix = ix;
+            }
+        }
+    }
+    if min_pos == haystack.len() {
+        return None;
+    }
+    Some((min_pos, min_ix))
 }
 
 #[derive(Debug, Clone)]
