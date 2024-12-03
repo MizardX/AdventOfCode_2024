@@ -1,4 +1,5 @@
-use std::path::Iter;
+use std::cmp::Reverse;
+use std::collections::BinaryHeap;
 use std::str::FromStr;
 use thiserror::Error;
 
@@ -48,46 +49,49 @@ fn parse_mul(part: &str) -> Option<usize> {
 pub fn part_2(input: &Input) -> usize {
     let mut sum = 0;
     let mut enabled = true;
-    let mut s = input.data.as_str();
-    while let Some((pos, pattern)) = find_any(s, &["mul(", "do()", "don't()"]) {
+    let data = input.data.as_str();
+    for (pos, pattern) in FindAny::new(data, &["mul(", "do()", "don't()"]) {
         match pattern {
-            0 => {
-                if enabled {
-                    if let Some(product) = parse_mul(&s[pos + 4..]) {
-                        sum += product;
-                    }
+            0 if enabled => {
+                if let Some(product) = parse_mul(&data[pos + 4..]) {
+                    sum += product;
                 }
-                s = &s[pos + 4..];
             }
-            1 => {
-                enabled = true;
-                s = &s[pos + 4..];
-            }
-            2 => {
-                enabled = false;
-                s = &s[pos + 7..];
-            }
-            _ => unreachable!(),
+            1 => enabled = true,
+            2 => enabled = false,
+            _ => (),
         }
     }
     sum
 }
 
-fn find_any<'a>(haystack: &'a str, needles: &[&'a str]) -> Option<(usize, usize)> {
-    let mut min_pos = haystack.len();
-    let mut min_ix = 0;
-    for (ix, needle_str) in needles.iter().enumerate() {
-        if let Some(pos) = haystack.find(needle_str) {
-            if pos < min_pos {
-                min_pos = pos;
-                min_ix = ix;
-            }
+struct FindAny<'a> {
+    haystack: &'a str,
+    patterns: BinaryHeap<(Reverse<usize>, usize, &'a str)>,
+}
+
+impl<'a> FindAny<'a> {
+    fn new(haystack: &'a str, patterns: &[&'a str]) -> Self {
+        let patterns = patterns
+            .iter()
+            .enumerate()
+            .filter_map(|(ix, &pattern)| Some((Reverse(haystack.find(pattern)?), ix, pattern)))
+            .collect();
+        Self { haystack, patterns }
+    }
+}
+
+impl Iterator for FindAny<'_> {
+    type Item = (usize, usize);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let (Reverse(pos), ix, pattern) = self.patterns.pop()?;
+        let len = pattern.len();
+        if let Some(next) = self.haystack[pos + len..].find(pattern) {
+            self.patterns.push((Reverse(pos + len + next), ix, pattern));
         }
+        Some((pos, ix))
     }
-    if min_pos == haystack.len() {
-        return None;
-    }
-    Some((min_pos, min_ix))
 }
 
 #[derive(Debug, Clone)]
