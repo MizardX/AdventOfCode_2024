@@ -1,4 +1,6 @@
-use std::{collections::HashMap, str::FromStr};
+use std::cmp::Ordering;
+use std::collections::HashSet;
+use std::str::FromStr;
 use thiserror::Error;
 
 const EXAMPLE: &str = include_str!("example.txt");
@@ -8,14 +10,14 @@ pub fn run() {
     println!(".Day 05");
 
     println!("++Example");
-    let example = EXAMPLE.parse().expect("Parse example");
+    let mut example = EXAMPLE.parse().expect("Parse example");
     println!("|+-Part 1: {} (expected 143)", part_1(&example));
-    println!("|'-Part 2: {} (expected 123)", part_2(&example));
+    println!("|'-Part 2: {} (expected 123)", part_2(&mut example));
 
     println!("++Input");
-    let input = INPUT.parse().expect("Parse input");
+    let mut input = INPUT.parse().expect("Parse input");
     println!("|+-Part 1: {} (expected 6_384)", part_1(&input));
-    println!("|'-Part 2: {} (expected 5_353)", part_2(&input));
+    println!("|'-Part 2: {} (expected 5_353)", part_2(&mut input));
     println!("')");
 }
 
@@ -23,7 +25,7 @@ pub fn run() {
 pub fn part_1(input: &Input) -> u32 {
     let mut mid_sum = 0;
     for update in &input.updates {
-        if update.is_correct_order(&input.before) {
+        if update.is_correct_order(&input.rules) {
             let mid = update.values.len() / 2;
             mid_sum += u32::from(update.values[mid]);
         }
@@ -32,11 +34,11 @@ pub fn part_1(input: &Input) -> u32 {
 }
 
 #[must_use]
-pub fn part_2(input: &Input) -> u32 {
+pub fn part_2(input: &mut Input) -> u32 {
     let mut mid_sum = 0;
-    for update in &input.updates {
-        if !update.is_correct_order(&input.before) {
-            let sorted_middle = update.sorted_middle(&input.before);
+    for update in &mut input.updates {
+        if !update.is_correct_order(&input.rules) {
+            let sorted_middle = update.sorted_middle(&input.rules);
             mid_sum += u32::from(sorted_middle);
         }
     }
@@ -50,48 +52,25 @@ pub struct Update {
 
 impl Update {
     #[must_use]
-    pub fn is_correct_order(&self, before: &HashMap<u8, Vec<u8>>) -> bool {
-        let mut invalid = [false; 100];
-        for &value in &self.values {
-            if invalid[value as usize] {
-                return false;
+    pub fn is_correct_order(&self, rules: &HashSet<(u8, u8)>) -> bool {
+        self.values.is_sorted_by(|&a, &b| rules.contains(&(a, b)))
+    }
+
+    pub fn sort(&mut self, rules: &HashSet<(u8, u8)>) {
+        self.values.sort_unstable_by(|&a, &b| {
+            if rules.contains(&(a, b)) {
+                Ordering::Less
+            } else {
+                Ordering::Greater
             }
-            invalid[value as usize] = true;
-            for &blocked in before.get(&value).map(Vec::as_slice).unwrap_or_default() {
-                invalid[blocked as usize] = true;
-            }
-        }
-        true
+        });
     }
 
     #[must_use]
-    pub fn sorted_middle(&self, before: &HashMap<u8, Vec<u8>>) -> u8 {
-        let mut sorted = Vec::new();
-        let mut visited = [false; 100];
-        for &value in &self.values {
-            if !visited[value as usize] {
-                self.topological_sort(value, before, &mut visited, &mut sorted);
-            }
-        }
-        assert!(sorted.len() == self.values.len(), "Topological sort failed. {:?} -> {sorted:?}", self.values);
-        let mid = sorted.len() / 2;
-        sorted[mid]
-    }
-
-    fn topological_sort(
-        &self,
-        value: u8,
-        before: &HashMap<u8, Vec<u8>>,
-        visited: &mut [bool; 100],
-        sorted: &mut Vec<u8>,
-    ) {
-        visited[value as usize] = true;
-        for &blocked in before.get(&value).map(Vec::as_slice).unwrap_or_default() {
-            if self.values.contains(&blocked) && !visited[blocked as usize] {
-                self.topological_sort(blocked, before, visited, sorted);
-            }
-        }
-        sorted.push(value);
+    pub fn sorted_middle(&mut self, rules: &HashSet<(u8, u8)>) -> u8 {
+        self.sort(rules);
+        let mid = self.values.len() / 2;
+        self.values[mid]
     }
 }
 
@@ -112,7 +91,7 @@ impl FromStr for Update {
 
 #[derive(Debug, Clone)]
 pub struct Input {
-    before: HashMap<u8, Vec<u8>>, // Maybe u128 bitmask?
+    rules: HashSet<(u8, u8)>, // Maybe u128 bitmask?
     updates: Vec<Update>,
 }
 
@@ -134,7 +113,7 @@ impl FromStr for Input {
             return Err(ParseInputError::EmptyInput);
         }
         let mut lines = text.lines();
-        let mut before = HashMap::new();
+        let mut rules = HashSet::new();
         for line in lines.by_ref() {
             if line.is_empty() {
                 break;
@@ -144,9 +123,9 @@ impl FromStr for Input {
                 .ok_or(ParseInputError::MissingChar('|'))?;
             let left: u8 = left.parse()?;
             let right: u8 = right.parse()?;
-            before.entry(right).or_insert_with(Vec::new).push(left);
+            rules.insert((left, right));
         }
-        if before.is_empty() {
+        if rules.is_empty() {
             return Err(ParseInputError::EmptyInput);
         }
 
@@ -157,9 +136,6 @@ impl FromStr for Input {
         if updates.is_empty() {
             return Err(ParseInputError::EmptyInput);
         }
-        Ok(Self {
-            before,
-            updates,
-        })
+        Ok(Self { rules, updates })
     }
 }
