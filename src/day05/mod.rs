@@ -1,4 +1,4 @@
-use std::str::FromStr;
+use std::{collections::HashMap, str::FromStr};
 use thiserror::Error;
 
 const EXAMPLE: &str = include_str!("example.txt");
@@ -15,7 +15,7 @@ pub fn run() {
     println!("++Input");
     let input = INPUT.parse().expect("Parse input");
     println!("|+-Part 1: {} (expected 6_384)", part_1(&input));
-    println!("|'-Part 2: {} (expected XXX)", part_2(&input));
+    println!("|'-Part 2: {} (expected 5_353)", part_2(&input));
     println!("')");
 }
 
@@ -36,10 +36,8 @@ pub fn part_2(input: &Input) -> u32 {
     let mut mid_sum = 0;
     for update in &input.updates {
         if !update.is_correct_order(&input.before) {
-            let sorted = update.topological_sort(&input.before, &input.after);
-            let mid = sorted.len() / 2;
-            println!("{:?} -> {sorted:?} -> {}", update.values, sorted[mid]);
-            mid_sum += u32::from(sorted[mid]);
+            let sorted_middle = update.sorted_middle(&input.before);
+            mid_sum += u32::from(sorted_middle);
         }
     }
     mid_sum
@@ -52,14 +50,14 @@ pub struct Update {
 
 impl Update {
     #[must_use]
-    pub fn is_correct_order(&self, before: &[Vec<u8>; 100]) -> bool {
+    pub fn is_correct_order(&self, before: &HashMap<u8, Vec<u8>>) -> bool {
         let mut invalid = [false; 100];
         for &value in &self.values {
             if invalid[value as usize] {
                 return false;
             }
             invalid[value as usize] = true;
-            for &blocked in &before[value as usize] {
+            for &blocked in before.get(&value).map(Vec::as_slice).unwrap_or_default() {
                 invalid[blocked as usize] = true;
             }
         }
@@ -67,33 +65,33 @@ impl Update {
     }
 
     #[must_use]
-    pub fn topological_sort(&self, before: &[Vec<u8>; 100], after: &[Vec<u8>; 100]) -> Vec<u8> {
-        let mut candidates = Vec::new();
-        for &x in &self.values {
-            if before[x as usize]
-                .iter()
-                .all(|&y| !self.values.contains(&y))
-            {
-                candidates.push(x);
+    pub fn sorted_middle(&self, before: &HashMap<u8, Vec<u8>>) -> u8 {
+        let mut sorted = Vec::new();
+        let mut visited = [false; 100];
+        for &value in &self.values {
+            if !visited[value as usize] {
+                self.topological_sort(value, before, &mut visited, &mut sorted);
             }
         }
-        assert!(!candidates.is_empty(), "No candidates found");
-        let mut sorted = Vec::with_capacity(self.values.len());
-        let mut added = [false; 100];
-        while let Some(x) = candidates.pop() {
-            if added[x as usize] {
-                continue;
-            }
-            added[x as usize] = true;
-            sorted.push(x);
-            for &y in &after[x as usize] {
-                if !added[y as usize] && self.values.contains(&y) {
-                    candidates.push(y);
-                }
+        assert!(sorted.len() == self.values.len(), "Topological sort failed. {:?} -> {sorted:?}", self.values);
+        let mid = sorted.len() / 2;
+        sorted[mid]
+    }
+
+    fn topological_sort(
+        &self,
+        value: u8,
+        before: &HashMap<u8, Vec<u8>>,
+        visited: &mut [bool; 100],
+        sorted: &mut Vec<u8>,
+    ) {
+        visited[value as usize] = true;
+        for &blocked in before.get(&value).map(Vec::as_slice).unwrap_or_default() {
+            if self.values.contains(&blocked) && !visited[blocked as usize] {
+                self.topological_sort(blocked, before, visited, sorted);
             }
         }
-        assert!(sorted.len() == self.values.len(), "Not all values sorted");
-        sorted
+        sorted.push(value);
     }
 }
 
@@ -114,8 +112,7 @@ impl FromStr for Update {
 
 #[derive(Debug, Clone)]
 pub struct Input {
-    before: [Vec<u8>; 100], // Maybe u128 bitmask?
-    after: [Vec<u8>; 100],  // Maybe u128 bitmask?
+    before: HashMap<u8, Vec<u8>>, // Maybe u128 bitmask?
     updates: Vec<Update>,
 }
 
@@ -137,8 +134,7 @@ impl FromStr for Input {
             return Err(ParseInputError::EmptyInput);
         }
         let mut lines = text.lines();
-        let mut before = [(); 100].map(|()| Vec::new());
-        let mut after = [(); 100].map(|()| Vec::new());
+        let mut before = HashMap::new();
         for line in lines.by_ref() {
             if line.is_empty() {
                 break;
@@ -146,14 +142,14 @@ impl FromStr for Input {
             let (left, right) = line
                 .split_once('|')
                 .ok_or(ParseInputError::MissingChar('|'))?;
-            let left = left.parse()?;
-            let right = right.parse()?;
-            before[right as usize].push(left);
-            after[left as usize].push(right);
+            let left: u8 = left.parse()?;
+            let right: u8 = right.parse()?;
+            before.entry(right).or_insert_with(Vec::new).push(left);
         }
         if before.is_empty() {
             return Err(ParseInputError::EmptyInput);
         }
+
         let mut updates = Vec::new();
         for line in lines {
             updates.push(line.parse()?);
@@ -163,7 +159,6 @@ impl FromStr for Input {
         }
         Ok(Self {
             before,
-            after,
             updates,
         })
     }
