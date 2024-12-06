@@ -15,72 +15,53 @@ pub fn run() {
 
     println!("++Input");
     let input = INPUT.parse().expect("Parse input");
-    println!("|+-Part 1: {} (expected 4776)", part_1(&input));
-    println!("|'-Part 2: {} (expected <1587)", part_2(&input));
+    println!("|+-Part 1: {} (expected 4_776)", part_1(&input));
+    println!("|'-Part 2: {} (expected 1_586)", part_2(&input));
     println!("')");
 }
 
 #[must_use]
 pub fn part_1(input: &Input) -> usize {
+    let (visited, _) = do_walk(input, None);
+    visited.values().filter(|&&mask| mask != 0b0000).count()
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum WalkResult {
+    Loop,
+    Exit,
+}
+
+fn do_walk(input: &Input, new_obstacle: Option<(u8, u8)>) -> (HashMap<(u8, u8), u8>, WalkResult) {
     let mut visited = HashMap::<(u8, u8), u8>::new();
     let mut guard = input.guard;
     loop {
         let pos = guard.pos;
         let mask = visited.entry(pos).or_insert(0);
         if *mask & guard.dir.to_bitmask() != 0 {
-            break;
+            return (visited, WalkResult::Loop);
         }
         *mask |= guard.dir.to_bitmask();
-        match guard.move_forward(input, None) {
+        match guard.move_forward(input, new_obstacle) {
             MoveResult::Ok => {}
-            MoveResult::Exited => break,
+            MoveResult::Exited => return (visited, WalkResult::Exit),
             MoveResult::HitObstacle => {
                 guard.turn_right();
             }
         }
     }
-    visited.values().filter(|&&mask| mask != 0b0000).count()
 }
 
 #[must_use]
 pub fn part_2(input: &Input) -> usize {
-    let mut initial_visited = HashMap::<(u8, u8), u8>::new();
-    let mut guard = input.guard;
-    loop {
-        let pos = guard.pos;
-        let mask = initial_visited.entry(pos).or_insert(0);
-        if *mask & guard.dir.to_bitmask() != 0 {
-            break;
-        }
-        *mask |= guard.dir.to_bitmask();
-        match guard.move_forward(input, None) {
-            MoveResult::Ok => {}
-            MoveResult::Exited => break,
-            MoveResult::HitObstacle => {
-                guard.turn_right();
-            }
-        }
-    }
-    let mut visited = HashMap::<(u8, u8), u8>::new();
+    let (initial_visited, _) = do_walk(input, None);
     let mut loop_counts = 0;
     for new_obstacle in initial_visited.into_keys() {
-        visited.clear();
-        guard = input.guard;
-        loop {
-            let pos = guard.pos;
-            let mask = visited.entry(pos).or_insert(0);
-            if *mask & guard.dir.to_bitmask() != 0 {
-                loop_counts += 1;
-                break;
-            }
-            *mask |= guard.dir.to_bitmask();
-            match guard.move_forward(input, Some(new_obstacle)) {
-                MoveResult::Ok => {}
-                MoveResult::Exited => break,
-                MoveResult::HitObstacle => {
-                    guard.turn_right();
-                }
-            }
+        if new_obstacle == input.guard.pos || input.obstacles.contains(&new_obstacle) {
+            continue;
+        }
+        if let (_, WalkResult::Loop) = do_walk(input, Some(new_obstacle)) {
+            loop_counts += 1;
         }
     }
     loop_counts
