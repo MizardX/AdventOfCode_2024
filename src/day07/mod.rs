@@ -25,14 +25,18 @@ pub fn run() {
 
 #[must_use]
 pub fn part_1(input: &Input) -> i64 {
-    fn check(target_value: i64, sum: i64, operands: &[i64]) -> bool {
-        if sum > target_value {
-            return false;
-        }
+    fn check(target_value: i64, operands: &[i64]) -> bool {
         match operands {
-            [] => sum == target_value,
-            &[x, ref xs @ ..] => {
-                check(target_value, sum + x, xs) || check(target_value, sum * x, xs)
+            [] => target_value == 0,
+            &[x] => x == target_value,
+            &[ref xs @ .., x] => {
+                if target_value % x == 0 && check(target_value / x, xs) {
+                    return true;
+                }
+                if x <= target_value && check(target_value - x, xs) {
+                    return true;
+                }
+                false
             }
         }
     }
@@ -41,8 +45,7 @@ pub fn part_1(input: &Input) -> i64 {
     for equation in &input.equations {
         if check(
             equation.target_value,
-            equation.operands[0],
-            &equation.operands[1..],
+            &equation.operands,
         ) {
             sum += equation.target_value;
         }
@@ -52,39 +55,46 @@ pub fn part_1(input: &Input) -> i64 {
 
 #[must_use]
 pub fn part_2(input: &Input) -> i64 {
-    fn concat(x: i64, y: i64) -> i64 {
+    fn ends_with(x: i64, y: i64) -> Option<i64> {
         match y {
-            0..=9 => 10*x + y,
-            10..=99 => 100*x + y,
-            100..=999 => 1_000*x + y,
-            1_000..=9_999 => 10_000*x + y,
-            10_000..=99_999 => 100_000*x + y,
-            100_000..=999_999 => 1_000_000*x + y,
-            1_000_000..=9_999_999 => 10_000_000*x + y,
-            10_000_000..=99_999_999 => 100_000_000*x + y,
-            100_000_000..=999_999_999 => 1_000_000_000*x + y,
-            1_000_000_000..=9_999_999_999 => 10_000_000_000*x + y,
-            10_000_000_000..=99_999_999_999 => 100_000_000_000*x + y,
-            100_000_000_000..=999_999_999_999 => 1_000_000_000_000*x + y,
-            1_000_000_000_000..=9_999_999_999_999 => 10_000_000_000_000*x + y,
-            10_000_000_000_000..=99_999_999_999_999 => 100_000_000_000_000*x + y,
-            100_000_000_000_000..=999_999_999_999_999 => 1_000_000_000_000_000*x + y,
-            1_000_000_000_000_000..=9_999_999_999_999_999 => 10_000_000_000_000_000*x + y,
-            10_000_000_000_000_000..=99_999_999_999_999_999 => 100_000_000_000_000_000*x + y,
-            _ => 1_000_000_000_000_000_000*x + y,
+            0..=9 => (x % 10 == y).then_some(x / 10),
+            10..=99 => (x % 100 == y).then_some(x / 100),
+            100..=999 => (x % 1_000 == y).then_some(x / 1_000),
+            1_000..=9_999 => (x % 10_000 == y).then_some(x / 10_000),
+            10_000..=99_999 => (x % 100_000 == y).then_some(x / 100_000),
+            100_000..=999_999 => (x % 1_000_000 == y).then_some(x / 1_000_000),
+            1_000_000..=9_999_999 => (x % 10_000_000 == y).then_some(x / 10_000_000),
+            10_000_000..=99_999_999 => (x % 100_000_000 == y).then_some(x / 100_000_000),
+            100_000_000..=999_999_999 => (x % 1_000_000_000 == y).then_some(x / 1_000_000_000),
+            1_000_000_000..=9_999_999_999 => (x % 10_000_000_000 == y).then_some(x / 10_000_000_000),
+            10_000_000_000..=99_999_999_999 => (x % 100_000_000_000 == y).then_some(x / 100_000_000_000),
+            100_000_000_000..=999_999_999_999 => (x % 1_000_000_000_000 == y).then_some(x / 1_000_000_000_000),
+            1_000_000_000_000..=9_999_999_999_999 => (x % 10_000_000_000_000 == y).then_some(x / 10_000_000_000_000),
+            10_000_000_000_000..=99_999_999_999_999 => (x % 100_000_000_000_000 == y).then_some(x / 100_000_000_000_000),
+            100_000_000_000_000..=999_999_999_999_999 => (x % 1_000_000_000_000_000 == y).then_some(x / 1_000_000_000_000_000),
+            1_000_000_000_000_000..=9_999_999_999_999_999 => (x % 10_000_000_000_000_000 == y).then_some(x / 10_000_000_000_000_000),
+            10_000_000_000_000_000..=99_999_999_999_999_999 => (x % 100_000_000_000_000_000 == y).then_some(x / 100_000_000_000_000_000),
+            _ => None,
         }
     }
 
-    fn check(target_value: i64, sum: i64, operands: &[i64]) -> bool {
-        if sum > target_value {
-            return false;
-        }
+    fn check(target_value: i64, operands: &[i64]) -> bool {
         match operands {
-            [] => sum == target_value,
-            &[x, ref xs @ ..] => {
-                check(target_value, sum + x, xs)
-                    || check(target_value, sum * x, xs)
-                    || check(target_value, concat(sum, x), xs)
+            [] => target_value == 0,
+            &[x] => x == target_value,
+            &[ref xs @ .., x] => {
+                if target_value % x == 0 && check(target_value / x, xs) {
+                    return true;
+                }
+                if let Some(rest) = ends_with(target_value, x) {
+                    if check(rest, xs) {
+                        return true;
+                    }
+                }
+                if x <= target_value && check(target_value - x, xs) {
+                    return true;
+                }
+                false
             }
         }
     }
@@ -93,8 +103,7 @@ pub fn part_2(input: &Input) -> i64 {
     for equation in &input.equations {
         if check(
             equation.target_value,
-            equation.operands[0],
-            &equation.operands[1..],
+            &equation.operands,
         ) {
             sum += equation.target_value;
         }
