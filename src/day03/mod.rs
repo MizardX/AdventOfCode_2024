@@ -48,17 +48,24 @@ fn parse_mul(part: &str) -> Option<usize> {
 #[must_use]
 pub fn part_2(input: &Input) -> usize {
     let mut sum = 0;
-    let mut enabled = true;
     let data = input.data.as_str();
-    for (pos, pattern) in FindAny::new(data, &["mul(", "do()", "don't()"]) {
+    let mut finder = FindAny::new(data, &["mul(", "don't()"]);
+    let mut finder_do = FindAny::new(data, &["do()"]);
+    while let Some((pos, pattern)) = finder.next() {
         match pattern {
-            0 if enabled => {
+            0 => {
                 if let Some(product) = parse_mul(&data[pos + 4..]) {
                     sum += product;
                 }
             }
-            1 => enabled = true,
-            2 => enabled = false,
+            1 => {
+                finder_do.skip_to(pos + 7);
+                if let Some((do_pos, _)) = finder_do.next() {
+                    finder.skip_to(do_pos + 4);
+                } else {
+                    finder.skip_to(data.len());
+                }
+            }
             _ => (),
         }
     }
@@ -71,13 +78,25 @@ struct FindAny<'a> {
 }
 
 impl<'a> FindAny<'a> {
-    fn new(haystack: &'a str, patterns: &[&'a str]) -> Self {
+    pub fn new(haystack: &'a str, patterns: &[&'a str]) -> Self {
         let patterns = patterns
             .iter()
             .enumerate()
             .filter_map(|(ix, &pattern)| Some((Reverse(haystack.find(pattern)?), ix, pattern)))
             .collect();
         Self { haystack, patterns }
+    }
+
+    pub fn skip_to(&mut self, new_pos: usize) {
+        while let Some(&(Reverse(pos), ix, pat)) = self.patterns.peek() {
+            if pos >= new_pos {
+                break;
+            } 
+            self.patterns.pop();
+             if let Some(next) = self.haystack[new_pos..].find(pat) {
+                self.patterns.push((Reverse(new_pos + next), ix, pat));
+            }
+        }
     }
 }
 
