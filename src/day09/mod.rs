@@ -1,4 +1,7 @@
-use std::{fmt::Debug, iter::FusedIterator, str::FromStr};
+use std::collections::BTreeMap;
+use std::fmt::Debug;
+use std::iter::FusedIterator;
+use std::str::FromStr;
 use thiserror::Error;
 
 const EXAMPLE: &str = include_str!("example.txt");
@@ -10,26 +13,24 @@ pub fn run() {
     println!("++Example");
     let example = EXAMPLE.parse().expect("Parse example");
     println!("|+-Part 1: {} (expected 1_928)", part_1(&example));
-    println!("|'-Part 2: {} (expected XXX)", part_2(&example));
+    println!("|'-Part 2: {} (expected 2_858)", part_2(&example));
 
     println!("++Input");
     let input = INPUT.parse().expect("Parse input");
     println!("|+-Part 1: {} (expected 6_344_673_854_800)", part_1(&input));
-    println!("|'-Part 2: {} (expected XXX)", part_2(&input));
+    println!("|'-Part 2: {} (expected 6_360_363_199_987)", part_2(&input));
     println!("')");
 }
 
 #[must_use]
 pub fn part_1(input: &Input) -> u64 {
     let defragmented = input.compact();
-    let mut pos = 0;
     let mut sum = 0;
     for entry in defragmented {
         match entry {
-            Entry::File(FileEntry { id, size }) => {
+            Entry::File(FileEntry { id, pos, size }) => {
                 // sum of pos..pos+size
                 sum += u64::from((pos * 2 + size - 1) * size / 2 * id);
-                pos += size;
             }
             Entry::Empty(_) => unreachable!(),
         }
@@ -38,20 +39,100 @@ pub fn part_1(input: &Input) -> u64 {
 }
 
 #[must_use]
-pub fn part_2(input: &Input) -> usize {
-    let _ = input;
-    0
+pub fn part_2(input: &Input) -> u64 {
+    let mut positioned: BTreeMap<u32, FileEntry> = BTreeMap::new();
+    let mut empties: BTreeMap<u32, EmptyEntry> = BTreeMap::new();
+    for &entry in &input.entries {
+        match entry {
+            Entry::File(file) => {
+                positioned.insert(file.pos, file);
+            }
+            Entry::Empty(empty) => {
+                empties.insert(empty.pos, empty);
+            }
+        }
+    }
+    for &entry in input.entries.iter().rev() {
+        if let Entry::File(file) = entry {
+            if let Some((_, &empty)) = empties
+                .range(..file.pos)
+                .find(|(_, &empty)| empty.size >= file.size)
+            {
+                empties.remove(&empty.pos);
+                if empty.size > file.size {
+                    let new_empty = EmptyEntry {
+                        pos: empty.pos + file.size,
+                        size: empty.size - file.size,
+                    };
+                    empties.insert(new_empty.pos, new_empty);
+                }
+                positioned.remove(&file.pos);
+                positioned.insert(empty.pos, file.with_pos(empty.pos));
+                let mut pos = file.pos;
+                let mut size = file.size;
+                if let Some(prev_empty) = empties
+                    .range(..file.pos)
+                    .next_back()
+                    .and_then(|(_, &e)| (e.pos + e.size == file.pos).then_some(e))
+                {
+                    empties.remove(&prev_empty.pos);
+                    pos = prev_empty.pos;
+                    size += prev_empty.size;
+                }
+                if let Some(next_empty) = empties
+                    .range(file.pos..)
+                    .next()
+                    .and_then(|(_, &e)| (file.pos + file.size == e.pos).then_some(e))
+                {
+                    empties.remove(&next_empty.pos);
+                    size += next_empty.size;
+                }
+                empties.insert(pos, EmptyEntry { pos, size });
+            }
+        }
+    }
+    let mut sum = 0;
+    for &FileEntry { id, pos, size } in positioned.values() {
+        // sum of pos..pos+size
+        let pos = u64::from(pos);
+        let size = u64::from(size);
+        let id = u64::from(id);
+        sum += (pos * 2 + size - 1) * size / 2 * id;
+    }
+    sum
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy)]
 pub struct FileEntry {
     pub id: u32,
+    pub pos: u32,
     pub size: u32,
 }
 
-#[derive(Clone, Copy, Debug)]
+impl FileEntry {
+    fn with_pos(self, pos: u32) -> Self {
+        Self { pos, ..self }
+    }
+}
+
+impl Debug for FileEntry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let Self { id, pos, size } = self;
+        write!(f, "{pos}:{size}#{id}")
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub struct EmptyEntry {
+    pub pos: u32,
     pub size: u32,
+}
+
+impl Debug for EmptyEntry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let Self { pos, size } = self;
+        write!(f, "{pos}:{size}")
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -63,21 +144,38 @@ pub enum Entry {
 impl Debug for Entry {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::File(FileEntry { id, size }) => write!(f, "{size}#{id}"),
-            Self::Empty(EmptyEntry { size }) => write!(f, "{size}"),
+            Self::File(file) => write!(f, "{file:?}"),
+            Self::Empty(empty) => write!(f, "{empty:?}"),
         }
     }
 }
 
 impl Entry {
-    fn new_file(id: u32, size: u32) -> Self {
-        Self::File(FileEntry { id, size })
+    fn new_file(id: u32, pos: u32, size: u32) -> Self {
+        Self::File(FileEntry { id, pos, size })
+    }
+
+    fn new_empty(pos: u32, size: u32) -> Self {
+        Self::Empty(EmptyEntry { pos, size })
+    }
+
+    fn with_pos(self, pos: u32) -> Self {
+        match self {
+            Self::File(FileEntry { id, size, .. }) => Self::new_file(id, pos, size),
+            Self::Empty(EmptyEntry { size, .. }) => Self::new_empty(pos, size),
+        }
     }
 
     fn with_size(self, size: u32) -> Self {
         match self {
-            Self::File(FileEntry { id, .. }) => Entry::File(FileEntry { id, size }),
-            Self::Empty(EmptyEntry { .. }) => Entry::Empty(EmptyEntry { size }),
+            Self::File(FileEntry { id, pos, .. }) => Self::new_file(id, pos, size),
+            Self::Empty(EmptyEntry { pos, .. }) => Self::new_empty(pos, size),
+        }
+    }
+
+    fn size(self) -> u32 {
+        match self {
+            Self::File(FileEntry { size, .. }) | Self::Empty(EmptyEntry { size, .. }) => size,
         }
     }
 }
@@ -100,6 +198,7 @@ pub struct Compact<'a> {
     tail: usize,
     head_item: Entry,
     tail_item: Entry,
+    pos: u32,
     completed: bool,
 }
 
@@ -109,6 +208,7 @@ impl<'a> Compact<'a> {
         let tail = input.entries.len() - 1;
         let head_item = input.entries[head];
         let tail_item = input.entries[tail];
+        let pos = 0;
         let completed = head >= tail;
         Self {
             input,
@@ -116,6 +216,7 @@ impl<'a> Compact<'a> {
             tail,
             head_item,
             tail_item,
+            pos,
             completed,
         }
     }
@@ -129,11 +230,14 @@ impl Iterator for Compact<'_> {
         while !self.completed {
             if self.head >= self.tail {
                 self.completed = true;
-                return Some(self.tail_item);
+                let item = self.tail_item.with_pos(self.pos);
+                self.pos += item.size();
+                return Some(item);
             }
             match (self.head_item, self.tail_item) {
                 (Entry::File(_), _) => {
-                    let item = self.head_item;
+                    let item = self.head_item.with_pos(self.pos);
+                    self.pos += item.size();
                     self.head += 1;
                     self.head_item = self.input.entries[self.head];
                     if self.head >= self.tail {
@@ -150,13 +254,18 @@ impl Iterator for Compact<'_> {
                     // loop
                 }
                 (
-                    Entry::Empty(EmptyEntry { size: head_size }),
+                    Entry::Empty(EmptyEntry {
+                        size: head_size, ..
+                    }),
                     Entry::File(FileEntry {
                         id,
                         size: tail_size,
+                        ..
                     }),
                 ) => {
                     let new_size = head_size.min(tail_size);
+                    let new_pos = self.pos;
+                    self.pos += new_size;
                     if head_size <= tail_size {
                         self.head += 1;
                         self.head_item = self.input.entries[self.head];
@@ -169,7 +278,7 @@ impl Iterator for Compact<'_> {
                     } else {
                         self.tail_item = self.tail_item.with_size(tail_size - head_size);
                     }
-                    return Some(Entry::new_file(id, new_size));
+                    return Some(Entry::new_file(id, new_pos, new_size));
                 }
             }
         }
@@ -188,17 +297,19 @@ impl FromStr for Input {
 
     fn from_str(text: &str) -> Result<Self, Self::Err> {
         let mut id = 0;
+        let mut pos = 0;
         let mut entries = Vec::new();
         for (i, ch) in text.bytes().enumerate() {
             match ch {
                 b'0'..=b'9' => {
                     let size = u32::from(ch - b'0');
                     if (i & 1) == 0 {
-                        entries.push(Entry::File(FileEntry { id, size }));
+                        entries.push(Entry::new_file(id, pos, size));
                         id += 1;
-                    } else {
-                        entries.push(Entry::Empty(EmptyEntry { size }));
+                    } else if size > 0 {
+                        entries.push(Entry::new_empty(pos, size));
                     }
+                    pos += size;
                 }
                 _ => return Err(ParseInputError::InvalidChar(ch as char)),
             }
