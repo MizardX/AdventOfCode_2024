@@ -6,6 +6,8 @@ use thiserror::Error;
 
 const EXAMPLE: &str = include_str!("example.txt");
 const INPUT: &str = include_str!("input.txt");
+// const ANTE1: &str = include_str!("ante1.txt");
+// const ANTE2: &str = include_str!("ante2.txt");
 
 pub fn run() {
     println!(".Day 09");
@@ -19,6 +21,16 @@ pub fn run() {
     let input = INPUT.parse().expect("Parse input");
     println!("|+-Part 1: {} (expected 6_344_673_854_800)", part_1(&input));
     println!("|'-Part 2: {} (expected 6_360_363_199_987)", part_2(&input));
+
+    // println!("++Ante 1");
+    // let ante1 = ANTE1.parse().expect("Parse ante 1");
+    // println!("|+-Part 1: {} (expected 44_652_698_743_984)", part_1(&ante1));
+    // println!("|'-Part 2: {} (expected 97_898_222_299_196)", part_2(&ante1));
+
+    // println!("++Ante 2");
+    // let ante2 = ANTE2.parse().expect("Parse ante 2");
+    // println!("|+-Part 1: {} (expected 226_884_355_354_768)", part_1(&ante2));
+    // println!("|'-Part 2: {} (expected 5_799_706_413_896_802)", part_2(&ante2));
     println!("')");
 }
 
@@ -26,14 +38,9 @@ pub fn run() {
 pub fn part_1(input: &Input) -> u64 {
     let defragmented = input.compact();
     let mut sum = 0;
-    for entry in defragmented {
-        match entry {
-            Entry::File(FileEntry { id, pos, size }) => {
-                // sum of pos..pos+size
-                sum += u64::from((pos * 2 + size - 1) * size / 2 * id);
-            }
-            Entry::Empty(_) => unreachable!(),
-        }
+    for FileEntry { id, pos, size } in defragmented {
+        // sum of pos..pos+size
+        sum += u64::from((pos * 2 + size - 1) * size / 2 * id);
     }
     sum
 }
@@ -159,23 +166,10 @@ impl Entry {
         Self::Empty(EmptyEntry { pos, size })
     }
 
-    fn with_pos(self, pos: u32) -> Self {
-        match self {
-            Self::File(FileEntry { id, size, .. }) => Self::new_file(id, pos, size),
-            Self::Empty(EmptyEntry { size, .. }) => Self::new_empty(pos, size),
-        }
-    }
-
     fn with_size(self, size: u32) -> Self {
         match self {
             Self::File(FileEntry { id, pos, .. }) => Self::new_file(id, pos, size),
             Self::Empty(EmptyEntry { pos, .. }) => Self::new_empty(pos, size),
-        }
-    }
-
-    fn size(self) -> u32 {
-        match self {
-            Self::File(FileEntry { size, .. }) | Self::Empty(EmptyEntry { size, .. }) => size,
         }
     }
 }
@@ -224,20 +218,25 @@ impl<'a> Compact<'a> {
 
 impl FusedIterator for Compact<'_> {}
 impl Iterator for Compact<'_> {
-    type Item = Entry;
+    type Item = FileEntry;
 
     fn next(&mut self) -> Option<Self::Item> {
         while !self.completed {
             if self.head >= self.tail {
                 self.completed = true;
-                let item = self.tail_item.with_pos(self.pos);
-                self.pos += item.size();
-                return Some(item);
+                return match self.tail_item {
+                    Entry::File(file) => {
+                        let file = file.with_pos(self.pos);
+                        self.pos += file.size;
+                        Some(file)
+                    }
+                    Entry::Empty(_) => None,
+                };
             }
             match (self.head_item, self.tail_item) {
-                (Entry::File(_), _) => {
-                    let item = self.head_item.with_pos(self.pos);
-                    self.pos += item.size();
+                (Entry::File(file), _) => {
+                    let item = file.with_pos(self.pos);
+                    self.pos += item.size;
                     self.head += 1;
                     self.head_item = self.input.entries[self.head];
                     if self.head >= self.tail {
@@ -278,7 +277,11 @@ impl Iterator for Compact<'_> {
                     } else {
                         self.tail_item = self.tail_item.with_size(tail_size - head_size);
                     }
-                    return Some(Entry::new_file(id, new_pos, new_size));
+                    return Some(FileEntry {
+                        id,
+                        pos: new_pos,
+                        size: new_size,
+                    });
                 }
             }
         }
