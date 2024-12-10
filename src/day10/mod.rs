@@ -1,4 +1,4 @@
-use std::str::FromStr;
+use std::{collections::HashSet, str::FromStr};
 use thiserror::Error;
 
 use crate::aoclib::Grid;
@@ -12,48 +12,43 @@ pub fn run() {
     println!("++Example");
     let example = EXAMPLE.parse().expect("Parse example");
     println!("|+-Part 1: {} (expected 36)", part_1(&example));
-    println!("|'-Part 2: {} (expected XXX)", part_2(&example));
+    println!("|'-Part 2: {} (expected 81)", part_2(&example));
 
     println!("++Input");
     let input = INPUT.parse().expect("Parse input");
-    println!("|+-Part 1: {} (expected XXX)", part_1(&input));
-    println!("|'-Part 2: {} (expected XXX)", part_2(&input));
+    println!("|+-Part 1: {} (expected 786)", part_1(&input));
+    println!("|'-Part 2: {} (expected 1_722)", part_2(&input));
     println!("')");
 }
 
 #[must_use]
 pub fn part_1(input: &Input) -> usize {
-    fn count_paths(elevation: &Grid<Elevation>, expected: Elevation, r: usize, c: usize) -> usize {
-        if elevation.get(r, c) != Some(&expected) {
-            return 0;
+    fn collect_paths(elevation: &Grid<Elevation>, expected: Elevation, r: usize, c: usize, goals_reached: &mut HashSet<(usize, usize)>) {
+        if elevation.get(c, r) != Some(&expected) {
+            return;
         }
-        if let Some(next) = expected.next() {
-            let mut paths = 0;
-            for dr in -1..=1 {
-                for dc in -1..=1 {
-                    if dr == 0 && dc == 0 {
-                        continue;
-                    }
-                    if let (Some(r), Some(c)) = (r.checked_add_signed(dr), c.checked_add_signed(dc))
-                    {
-                        if r < elevation.height() && c < elevation.width() {
-                            paths += count_paths(elevation, next, r, c);
-                        }
-                    }
+        let Some(next) = expected.next() else {
+            goals_reached.insert((r, c));
+            return;
+        };
+        for &(dr, dc) in &[(-1, 0), (1, 0), (0, -1), (0, 1)] {
+            if let (Some(r), Some(c)) = (r.checked_add_signed(dr), c.checked_add_signed(dc)) {
+                if r < elevation.height() && c < elevation.width() {
+                    collect_paths(elevation, next, r, c, goals_reached);
                 }
             }
-            paths
-        } else {
-            1
         }
     }
     let mut score = 0;
+    let mut goals_reached = HashSet::new();
     for (r, row) in input.elevations.rows().enumerate() {
         for (c, &cell) in row.iter().enumerate() {
             if cell != Elevation::H0 {
                 continue;
             }
-            score += count_paths(&input.elevations, Elevation::H0, r, c);
+            goals_reached.clear();
+            collect_paths(&input.elevations, Elevation::H0, r, c, &mut goals_reached);
+            score += goals_reached.len();
         }
     }
     score
@@ -61,8 +56,33 @@ pub fn part_1(input: &Input) -> usize {
 
 #[must_use]
 pub fn part_2(input: &Input) -> usize {
-    let _ = input;
-    0
+    fn collect_paths(elevation: &Grid<Elevation>, expected: Elevation, r: usize, c: usize) -> usize {
+        if elevation.get(c, r) != Some(&expected) {
+            return 0;
+        }
+        let Some(next) = expected.next() else {
+            return 1;
+        };
+        let mut score = 0;
+        for &(dr, dc) in &[(-1, 0), (1, 0), (0, -1), (0, 1)] {
+            if let (Some(r), Some(c)) = (r.checked_add_signed(dr), c.checked_add_signed(dc)) {
+                if r < elevation.height() && c < elevation.width() {
+                    score += collect_paths(elevation, next, r, c);
+                }
+            }
+        }
+        score
+    }
+    let mut score = 0;
+    for (r, row) in input.elevations.rows().enumerate() {
+        for (c, &cell) in row.iter().enumerate() {
+            if cell != Elevation::H0 {
+                continue;
+            }
+            score += collect_paths(&input.elevations, Elevation::H0, r, c);
+        }
+    }
+    score
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -123,8 +143,6 @@ pub struct Input {
 
 #[derive(Debug, Error)]
 pub enum ParseInputError {
-    // #[error("Input is empty")]
-    // EmptyInput,
     #[error("Unexpected character: '{0}'")]
     InvalidChar(char),
 }
