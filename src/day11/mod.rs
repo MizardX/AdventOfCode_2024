@@ -3,7 +3,7 @@ use std::str::FromStr;
 use thiserror::Error;
 
 const EXAMPLE: &str = include_str!("example.txt");
-// const INPUT: &str = include_str!("input.txt");
+const INPUT: &str = include_str!("input.txt");
 
 pub fn run() {
     println!(".Day 11");
@@ -11,46 +11,43 @@ pub fn run() {
     println!("++Example");
     let example = EXAMPLE.parse().expect("Parse example");
     println!("|+-Part 1: {} (expected 55_312)", part_1(&example));
-    println!("|'-Part 2: {} (expected XXX)", part_2(&example));
+    println!("|'-Part 2: {} (expected 65_601_038_650_482)", part_2(&example));
 
-    // println!("++Input");
-    // let input = INPUT.parse().expect("Parse input");
-    // println!("|+-Part 1: {} (expected XXX)", part_1(&input));
-    // println!("|'-Part 2: {} (expected XXX)", part_2(&input));
+    println!("++Input");
+    let input = INPUT.parse().expect("Parse input");
+    println!("|+-Part 1: {} (expected 218_079)", part_1(&input));
+    println!("|'-Part 2: {} (expected 259_755_538_429_618)", part_2(&input));
     println!("')");
 }
 
 #[must_use]
 pub fn part_1(input: &Input) -> usize {
-    fn count_after_split(
-        val: u64,
-        times: usize,
-        cache: &mut HashMap<(u64, usize), usize>,
-    ) -> usize {
-        if times == 0 {
-            return 1;
-        }
-        if let Some(&count) = cache.get(&(val, times)) {
-            return count;
-        }
-        let mut count = 0;
-        if val == 0 {
-            count = count_after_split(1, times - 1, cache);
-        } else if let Some((left, right)) = split_in_half(val) {
-            if left == right {
-                count += 2*count_after_split(left, times - 1, cache);
-            } else {
-                count += count_after_split(left, times - 1, cache);
-                count += count_after_split(right, times - 1, cache);
-            }
-        } else {
-            count += count_after_split(val * 2014, times - 1, cache);
-        }
-        cache.insert((val, times), count);
-        count
-    }
     let mut cache = HashMap::new();
-    input.stones.iter().map(|&val| count_after_split(val, 10, &mut cache)).sum()
+    input.stones.iter().map(|&val| count_after_split(val, 25, &mut cache)).sum()
+}
+
+fn count_after_split(
+    val: u64,
+    times: usize,
+    cache: &mut HashMap<(u64, usize), usize>,
+) -> usize {
+    if times == 0 {
+        return 1;
+    }
+    if let Some(&count) = cache.get(&(val, times)) {
+        return count;
+    }
+    let mut count = 0;
+    if val == 0 {
+        count += count_after_split(1, times - 1, cache);
+    } else if let Some((left, right)) = split_in_half(val) {
+        count += count_after_split(left, times - 1, cache);
+        count += count_after_split(right, times - 1, cache);
+    } else {
+        count += count_after_split(val * 2024, times - 1, cache);
+    }
+    cache.insert((val, times), count);
+    count
 }
 
 fn num_digits(val: u64) -> usize {
@@ -80,8 +77,8 @@ fn split_in_half(val: u64) -> Option<(u64, u64)> {
 
 #[must_use]
 pub fn part_2(input: &Input) -> usize {
-    let _ = input;
-    0
+    let mut cache = HashMap::new();
+    input.stones.iter().map(|&val| count_after_split(val, 75, &mut cache)).sum()
 }
 
 #[derive(Debug, Clone)]
