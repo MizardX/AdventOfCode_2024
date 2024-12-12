@@ -39,6 +39,14 @@ impl<T> Grid<T> {
         }
     }
 
+    pub fn get_signed(&self, x: isize, y: isize) -> Option<&T> {
+        if let (Ok(x), Ok(y)) = (x.try_into(), y.try_into()) {
+            self.get(x, y)
+        } else {
+            None
+        }
+    }
+
     pub fn get_mut(&mut self, x: usize, y: usize) -> Option<&mut T> {
         if x < self.width && y < self.height {
             Some(&mut self.data[y * self.width + x])

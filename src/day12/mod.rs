@@ -81,72 +81,55 @@ pub fn part_1(input: &Input) -> usize {
 
 #[must_use]
 pub fn part_2(input: &Input) -> usize {
-    let mut ds = DisjointSet::new(input.plots.height() * input.plots.width());
-    let stride = input.plots.width();
-    let mut perimiter = vec![4; input.plots.height() * input.plots.width()];
-    for (r, row) in input.plots.rows().enumerate() {
-        for (c, &plot) in row.iter().enumerate() {
-            let id = r * input.plots.width() + c;
-            if c == 0 && r > 0 && input.plots.get(c, r - 1) == Some(&plot) {
-                // first column, same as above, so left fence continues. self--
-                perimiter[id] -= 1;
-            }
-            if c == input.plots.width() - 1 && r > 0 && input.plots.get(c, r - 1) == Some(&plot) {
-                // last column, same as above, so right fence continues. self--
-                perimiter[id] -= 1;
-            }
-            if c > 0 && row[c - 1] == plot {
-                // same as left, so left fence does not exist, and right fence of left plot does not exist. self--, left--
+    let width = input.plots.width();
+    let height = input.plots.height();
+    let mut ds = DisjointSet::new(width * height);
+    let mut perimiter = vec![4; width * height];
+    let stride = width;
+    for r in 0..=height {
+        for c in 0..=width {
+            let id = r * stride + c;
+            let y = isize::try_from(r).expect("usize to isize conversion failed");
+            let x = isize::try_from(c).expect("usize to isize conversion failed");
+            let diag = input.plots.get_signed(x - 1, y - 1);
+            let left = input.plots.get_signed(x - 1, y);
+            let above = input.plots.get_signed(x, y - 1);
+            let this = input.plots.get_signed(x, y);
+            if left.is_some() && left == this {
+                // same as left, so left fence does not exist, and right fence of left plot does not exist. this--, left--
                 ds.union(id, id - 1);
                 perimiter[id] -= 1;
                 perimiter[id - 1] -= 1;
             }
-            if r == 0 && c > 0 && input.plots.get(c - 1, r) == Some(&plot) {
-                // first row, same as left, so above fence continues. self--
-                perimiter[id] -= 1;
-            }
-            if r == input.plots.height() - 1 && c > 0 && input.plots.get(c - 1, r) == Some(&plot) {
-                // last row, same as left, so below fence continues. self--
-                perimiter[id] -= 1;
-            }
-            if r > 0 && input.plots.get(c, r - 1) == Some(&plot) {
-                // same as above, so above fence does not exist, and below fence of above plot does not exist. self--, above--
+            if above.is_some() && above == this {
+                // same as above, so above fence does not exist, and below fence of above plot does not exist. this--, above--
                 ds.union(id, id - stride);
                 perimiter[id] -= 1;
                 perimiter[id - stride] -= 1;
             }
-            if r > 0 && c > 0 {
-                if let (Some(&diag), Some(&left), Some(&above)) = (
-                    input.plots.get(c - 1, r - 1),
-                    input.plots.get(c - 1, r),
-                    input.plots.get(c, r - 1),
-                ) {
-                    // quad case {diag} {above} / {left} {plot}
-                    if above == plot && left != plot && diag != plot {
-                        // left fence countinues. self--
-                        // .X
-                        // .X
-                        perimiter[id] -= 1;
-                    }
-                    if left != plot && above != diag && diag == left {
-                        // right fence of left region countinues. left--
-                        // Y.
-                        // Y.
-                        perimiter[id - 1] -= 1;
-                    }
-                    if above != plot && left == plot && diag != plot {
-                        // above fence countinues. self--
-                        // ..
-                        // XX
-                        perimiter[id] -= 1;
-                    }
-                    if left != diag && above != plot && diag == above {
-                        // below fence of above region countinues. above--
-                        // YY
-                        // ..
-                        perimiter[id - stride] -= 1;
-                    }
-                }
+            if this.is_some() && above == this && left != this && diag != this {
+                // left fence countinues. this--
+                // .X
+                // .X
+                perimiter[id] -= 1;
+            }
+            if left.is_some() && diag == left && this != left && above != diag {
+                // right fence of left region countinues. left--
+                // Y.
+                // Y.
+                perimiter[id - 1] -= 1;
+            }
+            if this.is_some() && left == this && above != this && diag != left {
+                // above fence countinues. this--
+                // ..
+                // XX
+                perimiter[id] -= 1;
+            }
+            if above.is_some() && diag == above && left != diag && this != above {
+                // below fence of above region countinues. above--
+                // YY
+                // ..
+                perimiter[id - stride] -= 1;
             }
         }
     }
