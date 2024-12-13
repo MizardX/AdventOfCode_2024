@@ -48,18 +48,52 @@ pub fn run() {
 
 #[must_use]
 pub fn part_1(input: &Input) -> usize {
-    let mut ds = DisjointSet::new(input.plots.height() * input.plots.width());
-    let stride = input.plots.width();
-    let mut perimiter = vec![4; input.plots.height() * input.plots.width()];
-    for (r, row) in input.plots.rows().enumerate() {
-        for (c, &plot) in row.iter().enumerate() {
-            let id = r * input.plots.width() + c;
-            if c > 0 && row[c - 1] == plot {
+    let width = input.plots.width();
+    let height = input.plots.height();
+    let mut ds = DisjointSet::new(width * height);
+    let stride = width;
+    let mut perimiter = vec![4; width * height];
+    // Top edge
+    let first_row = input.plots.row(0).unwrap();
+    for (c, (left, this)) in first_row.iter().zip(first_row.iter().skip(1)).enumerate() {
+        let id = c + 1; // + 0 * stride;
+        if left == this {
+            ds.union(id, id - 1);
+            perimiter[id] -= 1;
+            perimiter[id - 1] -= 1;
+        }
+    }
+    // Middle rows
+    for (r, (row1, row2)) in input
+        .plots
+        .rows()
+        .zip(input.plots.rows().skip(1))
+        .enumerate()
+    {
+        // Left edge
+        let c = 0;
+        let id = (r + 1) * stride + c;
+        let above = row1[0];
+        let this = row2[0];
+        if above == this {
+            ds.union(id, id - stride);
+            perimiter[id] -= 1;
+            perimiter[id - stride] -= 1;
+        }
+        // Not touching any edge
+        for (c, ((_, above), (left, this))) in row1
+            .iter()
+            .zip(row1.iter().skip(1))
+            .zip(row2.iter().zip(row2.iter().skip(1)))
+            .enumerate()
+        {
+            let id = (r + 1) * stride + c + 1;
+            if left == this {
                 ds.union(id, id - 1);
                 perimiter[id] -= 1;
                 perimiter[id - 1] -= 1;
             }
-            if r > 0 && input.plots.get(c, r - 1) == Some(&plot) {
+            if above == this {
                 ds.union(id, id - stride);
                 perimiter[id] -= 1;
                 perimiter[id - stride] -= 1;
@@ -86,53 +120,122 @@ pub fn part_2(input: &Input) -> usize {
     let mut ds = DisjointSet::new(width * height);
     let mut perimiter = vec![4; width * height];
     let stride = width;
-    for r in 0..=height {
-        for c in 0..=width {
-            let id = r * stride + c;
-            let y = isize::try_from(r).expect("usize to isize conversion failed");
-            let x = isize::try_from(c).expect("usize to isize conversion failed");
-            let diag = input.plots.get_signed(x - 1, y - 1);
-            let left = input.plots.get_signed(x - 1, y);
-            let above = input.plots.get_signed(x, y - 1);
-            let this = input.plots.get_signed(x, y);
-            if left.is_some() && left == this {
+    // Top edge -- corners are ignored, since they do not affect anything
+    let first_row = input.plots.row(0).unwrap();
+    for (c, (left, this)) in first_row.iter().zip(first_row.iter().skip(1)).enumerate() {
+        let id = c + 1; // + 0 * stride;
+        if left == this {
+            // same as left, so left fence does not exist, and right fence of left plot does not exist. this--, left--
+            // ..
+            // XX
+            ds.union(id, id - 1);
+            perimiter[id] -= 1;
+            perimiter[id - 1] -= 1;
+
+            // above fence countinues. this--
+            // ..
+            // XX
+            perimiter[id] -= 1;
+        }
+    }
+    for (r, (row1, row2)) in input
+        .plots
+        .rows()
+        .zip(input.plots.rows().skip(1))
+        .enumerate()
+    {
+        // Left edge
+        let c = 0;
+        let id = (r + 1) * stride + c;
+        let above = row1[0];
+        let this = row2[0];
+        if above == this {
+            // same as above, so above fence does not exist, and below fence of above plot does not exist. this--, above--
+            // .X
+            // .X
+            ds.union(id, id - stride);
+            perimiter[id] -= 1;
+            perimiter[id - stride] -= 1;
+
+            // left fence countinues. this--
+            // .X
+            // .X
+            perimiter[id] -= 1;
+        }
+        // Not touching any edge
+        for (c, ((diag, above), (left, this))) in row1
+            .iter()
+            .zip(row1.iter().skip(1))
+            .zip(row2.iter().zip(row2.iter().skip(1)))
+            .enumerate()
+        {
+            let id = (r + 1) * stride + c + 1;
+            if left == this {
                 // same as left, so left fence does not exist, and right fence of left plot does not exist. this--, left--
+                // ..
+                // XX
                 ds.union(id, id - 1);
                 perimiter[id] -= 1;
                 perimiter[id - 1] -= 1;
-            }
-            if above.is_some() && above == this {
-                // same as above, so above fence does not exist, and below fence of above plot does not exist. this--, above--
-                ds.union(id, id - stride);
-                perimiter[id] -= 1;
-                perimiter[id - stride] -= 1;
-            }
-            if this.is_some() && above == this && left != this && diag != this {
-                // left fence countinues. this--
-                // .X
-                // .X
-                perimiter[id] -= 1;
-            }
-            if left.is_some() && diag == left && this != left && above != diag {
+
+                if above != this && diag != left {
+                    // above fence countinues. this--
+                    // ..
+                    // XX
+                    perimiter[id] -= 1;
+                }
+            } else if diag == left && above != diag {
                 // right fence of left region countinues. left--
                 // Y.
                 // Y.
                 perimiter[id - 1] -= 1;
             }
-            if this.is_some() && left == this && above != this && diag != left {
-                // above fence countinues. this--
-                // ..
-                // XX
+            if above == this {
+                // same as above, so above fence does not exist, and below fence of above plot does not exist. this--, above--
+                // .X
+                // .X
+                ds.union(id, id - stride);
                 perimiter[id] -= 1;
-            }
-            if above.is_some() && diag == above && left != diag && this != above {
+                perimiter[id - stride] -= 1;
+
+                if left != this && diag != this {
+                    // left fence countinues. this--
+                    // .X
+                    // .X
+                    perimiter[id] -= 1;
+                }
+            } else if diag == above && left != diag {
                 // below fence of above region countinues. above--
                 // YY
                 // ..
                 perimiter[id - stride] -= 1;
             }
         }
+        // Right edge
+        let id = (r + 1) * stride + width;
+        let diag = row1[width - 1];
+        let left = row2[width - 1];
+        if diag == left {
+            // right fence of left region countinues. left--
+            // Y.
+            // Y.
+            perimiter[id - 1] -= 1;
+        }
     }
+
+    // Bottom edge -- corners are ignored, since they do not affect anything
+    let last_row = input.plots.row(height - 1).unwrap();
+    let r = height;
+    for (c, (diag, above)) in last_row.iter().zip(last_row.iter().skip(1)).enumerate() {
+        let id = r * stride + c + 1;
+        if diag == above {
+            // below fence of above region countinues. above--
+            // YY
+            // ..
+            perimiter[id - stride] -= 1;
+        }
+    }
+
     let mut total_cost = 0;
     for r in 0..input.plots.height() {
         for c in 0..input.plots.width() {
