@@ -10,12 +10,12 @@ pub fn run() {
     println!("++Example");
     let example = EXAMPLE.parse().expect("Parse example");
     println!("|+-Part 1: {} (expected 480)", part_1(&example));
-    println!("|'-Part 2: {} (expected XXX)", part_2(&example));
+    println!("|'-Part 2: {} (expected 875_318_608_908)", part_2(&example));
 
     println!("++Input");
     let input = INPUT.parse().expect("Parse input");
-    // println!("|+-Part 1: {} (expected XXX)", part_1(&input));
-    println!("|'-Part 2: {} (expected XXX)", part_2(&input));
+    println!("|+-Part 1: {} (expected 32_026)", part_1(&input));
+    println!("|'-Part 2: {} (expected 89_013_607_072_065)", part_2(&input));
     println!("')");
 }
 
@@ -23,7 +23,7 @@ pub fn run() {
 pub fn part_1(input: &Input) -> i64 {
     let mut cost = 0;
     for claw_machine in &input.claw_machines {
-        if let Some((x, y)) = dbg!(claw_machine.button_presses()) {
+        if let Some((x, y)) = claw_machine.button_presses((0, 0)) {
             cost += x * 3 + y;
         }
     }
@@ -31,9 +31,15 @@ pub fn part_1(input: &Input) -> i64 {
 }
 
 #[must_use]
-pub fn part_2(input: &Input) -> usize {
-    let _ = input;
-    0
+pub fn part_2(input: &Input) -> i64 {
+    let mut cost = 0;
+    for claw_machine in &input.claw_machines {
+        if let Some((x, y)) = claw_machine.button_presses((10_000_000_000_000, 10_000_000_000_000))
+        {
+            cost += x * 3 + y;
+        }
+    }
+    cost
 }
 
 #[derive(Debug, Clone)]
@@ -44,7 +50,7 @@ struct ClawMachine {
 }
 
 impl ClawMachine {
-    fn button_presses(&self) -> Option<(i64, i64)> {
+    fn button_presses(&self, offset: (i64, i64)) -> Option<(i64, i64)> {
         // Press A X times, then B Y times to reach the prize
         // A * X + B * Y = Prize
         // X = (Prize.y * B.x - Prize.x * B.y) / (A.x * B.y - A.y * B.x)
@@ -53,8 +59,10 @@ impl ClawMachine {
         if denom == 0 {
             return None;
         }
-        let numer_x = self.prize.0 * self.button_b.1 - self.prize.1 * self.button_b.0;
-        let numer_y = self.button_a.0 * self.prize.1 - self.button_a.1 * self.prize.0;
+        let numer_x = (self.prize.0 + offset.0) * self.button_b.1
+            - (self.prize.1 + offset.1) * self.button_b.0;
+        let numer_y = self.button_a.0 * (self.prize.1 + offset.1)
+            - self.button_a.1 * (self.prize.0 + offset.0);
         if numer_x / denom < 0 || numer_y / denom < 0 {
             return None;
         }
