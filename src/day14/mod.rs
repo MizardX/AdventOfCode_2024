@@ -36,18 +36,116 @@ pub fn part_1(input: &Input, room_size: (i32, i32)) -> usize {
 
 #[must_use]
 pub fn part_2(input: &Input, room_size: (i32, i32)) -> i32 {
-    let mut sum_var_x = 0;
-    let mut sum_var_y = 0;
-    for time in 0.. {
-        let var_x = input.variance_x(time, room_size);
-        let var_y = input.variance_y(time, room_size);
-        sum_var_x += var_x;
-        sum_var_y += var_y;
-        if time > 10 && var_x < sum_var_x/(2*time + 1) && var_y < sum_var_y/(2*time + 1) {
-            return time;
+    let (width, height) = room_size;
+    let mut stats_x = Stats::new();
+    let mut stats_y = Stats::new();
+    let mut outlier_x = None;
+    let mut outlier_y = None;
+    for time in 0..=7_916 {
+        if outlier_x.is_none() {
+            let x = input.variance_x(time, room_size);
+            if stats_x.is_outlier(x, 8) {
+                outlier_x = Some(time);
+            }
+            stats_x.add(x);
+        }
+        if outlier_y.is_none() {
+            let y = input.variance_y(time, room_size);
+            if stats_y.is_outlier(y, 8) {
+                outlier_y = Some(time);
+            }
+            stats_y.add(y);
+        }
+        if let (Some(outlier_x), Some(outlier_y)) = (outlier_x, outlier_y) {
+            // projected_time == outlier_x (mod width)
+            // projected_time == outlier_y (mod height)
+
+            let outlier_x = i64::from(outlier_x);
+            let outlier_y = i64::from(outlier_y);
+
+            let width = i64::from(width);
+            let height = i64::from(height);
+            let (gcd, inv_width, inv_height) = egcd(width, height);
+            assert!(gcd == 1, "No inverse found");
+
+            let projected_time = (width * outlier_y * inv_width + height * outlier_x * inv_height)
+                % (width * height);
+            let result = i32::try_from(projected_time).expect("Value out of range for i32");
+            return result;
         }
     }
     unreachable!()
+}
+
+#[expect(clippy::similar_names)]
+fn egcd(m: i64, n: i64) -> (i64, i64, i64) {
+    let (mut current, mut gcd) = (m, n);
+    let (mut coeff_m1, mut coeff_n1) = (1, 0); // such that coeff_m1 * m + coeff_n1 * n = current
+    let (mut coeff_m2, mut coeff_n2) = (0, 1); // such that coeff_m2 * m + coeff_n2 * n = gcd
+
+    let (mut quotient, mut remainder) = (current / gcd, current % gcd);
+    while remainder != 0 {
+        // (coeff_m1, coeff_n1, coeff_m2, coeff_n2, current, gcd) => (coeff_m2, coeff_n2, coeff_m1 - quotient * coeff_m2, coeff_n1 - quotient * coeff_n2, gcd, remainder)
+        let mut temp = coeff_m1;
+        coeff_m1 = coeff_m2;
+        coeff_m2 = temp - quotient * coeff_m2;
+
+        temp = coeff_n1;
+        coeff_n1 = coeff_n2;
+        coeff_n2 = temp - quotient * coeff_n2;
+
+        current = gcd;
+        gcd = remainder;
+
+        quotient = current / gcd;
+        remainder = current % gcd;
+    }
+    (gcd, coeff_m2, coeff_n2)
+}
+
+#[derive(Debug, Clone, Copy)]
+struct Stats {
+    sum: i64,
+    sum_squared: i64,
+    count: i64,
+}
+
+impl Stats {
+    fn new() -> Self {
+        Self {
+            sum: 0,
+            sum_squared: 0,
+            count: 0,
+        }
+    }
+
+    fn add(&mut self, value: i32) {
+        let value = i64::from(value);
+        self.sum += value;
+        self.sum_squared += value * value;
+        self.count += 1;
+    }
+
+    #[expect(clippy::cast_possible_truncation)]
+    fn mean(&self) -> i32 {
+        (self.sum / self.count) as i32
+    }
+
+    #[expect(clippy::cast_possible_truncation)]
+    fn variance(&self) -> i32 {
+        let mean = self.sum / self.count;
+        (self.sum_squared / self.count - mean * mean) as i32
+    }
+
+    fn is_outlier(&self, value: i32, sigma: i32) -> bool {
+        if self.count < 2 {
+            return false;
+        }
+        let mean = self.mean();
+        let variance = self.variance();
+        let dist = (value - mean).abs();
+        dist * dist > sigma * sigma * variance
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -115,34 +213,23 @@ pub struct Input {
 
 impl Input {
     #[must_use]
-    #[expect(clippy::cast_possible_wrap)]
-    #[expect(clippy::cast_possible_truncation)]
     pub fn variance_x(&self, time: i32, room_size: (i32, i32)) -> i32 {
-        let mut sum = 0;
-        let mut sum_squared = 0;
+        let mut stats = Stats::new();
         for robot in &self.robots {
             let (px, _) = robot.wrap(time, room_size);
-            sum += px;
-            sum_squared += px * px;
+            stats.add(px);
         }
-        let n = self.robots.len() as i32;
-        let mean = sum / n;
-        sum_squared / n - mean * mean
+        stats.variance()
     }
+
     #[must_use]
-    #[expect(clippy::cast_possible_wrap)]
-    #[expect(clippy::cast_possible_truncation)]
     pub fn variance_y(&self, time: i32, room_size: (i32, i32)) -> i32 {
-        let mut sum = 0;
-        let mut sum_squared = 0;
+        let mut stats = Stats::new();
         for robot in &self.robots {
             let (_, py) = robot.wrap(time, room_size);
-            sum += py;
-            sum_squared += py * py;
+            stats.add(py);
         }
-        let n = self.robots.len() as i32;
-        let mean = sum / n;
-        sum_squared / n - mean * mean
+        stats.variance()
     }
 }
 
