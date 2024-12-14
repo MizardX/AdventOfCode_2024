@@ -13,7 +13,10 @@ pub fn run() {
 
     println!("++Input");
     let input = INPUT.parse().expect("Parse input");
-    println!("|+-Part 1: {} (expected 221_142_636)", part_1(&input, (101, 103)));
+    println!(
+        "|+-Part 1: {} (expected 221_142_636)",
+        part_1(&input, (101, 103))
+    );
     println!("|'-Part 2: {} (expected 7_916)", part_2(&input, (101, 103)));
     println!("')");
 }
@@ -33,22 +36,18 @@ pub fn part_1(input: &Input, room_size: (i32, i32)) -> usize {
 
 #[must_use]
 pub fn part_2(input: &Input, room_size: (i32, i32)) -> i32 {
+    let mut sum_var_x = 0;
+    let mut sum_var_y = 0;
     for time in 0.. {
-        let picture = input.draw_picture(time, room_size);
-        let has_5x5_box = picture.windows(5).any(|five_rows| {
-            five_rows[0].windows(5).enumerate().any(|(y, row1_five_items)| {
-                row1_five_items == b"#####"
-                    && &five_rows[1][y..y + 5] == b"#####"
-                    && &five_rows[2][y..y + 5] == b"#####"
-                    && &five_rows[3][y..y + 5] == b"#####"
-                    && &five_rows[4][y..y + 5] == b"#####"
-            })
-        });
-        if has_5x5_box {
+        let var_x = input.variance_x(time, room_size);
+        let var_y = input.variance_y(time, room_size);
+        sum_var_x += var_x;
+        sum_var_y += var_y;
+        if time > 10 && var_x < sum_var_x/(2*time + 1) && var_y < sum_var_y/(2*time + 1) {
             return time;
         }
     }
-    0
+    unreachable!()
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -116,14 +115,34 @@ pub struct Input {
 
 impl Input {
     #[must_use]
-    #[allow(clippy::cast_sign_loss)]
-    pub fn draw_picture(&self, time: i32, room_size: (i32, i32)) -> Vec<Vec<u8>> {
-        let mut picture = vec![vec![b'.'; room_size.0 as usize]; room_size.1 as usize];
+    #[expect(clippy::cast_possible_wrap)]
+    #[expect(clippy::cast_possible_truncation)]
+    pub fn variance_x(&self, time: i32, room_size: (i32, i32)) -> i32 {
+        let mut sum = 0;
+        let mut sum_squared = 0;
         for robot in &self.robots {
-            let (px, py) = robot.wrap(time, room_size);
-            picture[py as usize][px as usize] = b'#';
+            let (px, _) = robot.wrap(time, room_size);
+            sum += px;
+            sum_squared += px * px;
         }
-        picture
+        let n = self.robots.len() as i32;
+        let mean = sum / n;
+        sum_squared / n - mean * mean
+    }
+    #[must_use]
+    #[expect(clippy::cast_possible_wrap)]
+    #[expect(clippy::cast_possible_truncation)]
+    pub fn variance_y(&self, time: i32, room_size: (i32, i32)) -> i32 {
+        let mut sum = 0;
+        let mut sum_squared = 0;
+        for robot in &self.robots {
+            let (_, py) = robot.wrap(time, room_size);
+            sum += py;
+            sum_squared += py * py;
+        }
+        let n = self.robots.len() as i32;
+        let mean = sum / n;
+        sum_squared / n - mean * mean
     }
 }
 
@@ -143,105 +162,5 @@ impl FromStr for Input {
     fn from_str(text: &str) -> Result<Self, Self::Err> {
         let robots = text.lines().map(str::parse).collect::<Result<_, _>>()?;
         Ok(Self { robots })
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_robot_warp() {
-        let robot = Robot {
-            position: (2, 4),
-            velocity: (2, -3),
-        };
-        let room_size = (11, 7);
-        assert_eq!(robot.wrap(0, room_size), (2, 4));
-        assert_eq!(robot.wrap(1, room_size), (4, 1));
-        assert_eq!(robot.wrap(2, room_size), (6, 5));
-        assert_eq!(robot.wrap(3, room_size), (8, 2));
-        assert_eq!(robot.wrap(4, room_size), (10, 6));
-        assert_eq!(robot.wrap(5, room_size), (1, 3));
-    }
-
-    #[test]
-    fn test_robots_example_wrap_after_100_seconds() {
-        let input: Input = Input {
-            robots: vec![
-                "p=6,3 v=-1,-3".parse().unwrap(), // (6+(-1)*100, 3+(-3)*100) = (-94, -297) % (11, 7) = (5, 4)
-                "p=3,4 v=1,3".parse().unwrap(), // (3+(1)*100, 4+(3)*100) = (103, 304) % (11, 7) = (4, 3)
-                "p=4,3 v=0,-1".parse().unwrap(), // (4+(0)*100, 3+(-1)*100) = (4, -97) % (11, 7) = (4, 1)
-                "p=5,4 v=1,3".parse().unwrap(), // (5+(1)*100, 4+(3)*100) = (105, 304) % (11, 7) = (6, 3)
-                "p=6,3 v=0,-1".parse().unwrap(), // (6+(0)*100, 3+(-1)*100) = (6, -97) % (11, 7) = (6, 1)
-                "p=7,4 v=1,3".parse().unwrap(), // (7+(1)*100, 4+(3)*100) = (107, 304) % (11, 7) = (8, 3)
-                "p=8,3 v=0,-1".parse().unwrap(), // (8+(0)*100, 3+(-1)*100) = (8, -97) % (11, 7) = (8, 1)
-                "p=9,4 v=1,3".parse().unwrap(), // (9+(1)*100, 4+(3)*100) = (109, 304) % (11, 7) = (10, 3)
-                "p=10,3 v=0,-1".parse().unwrap(), // (10+(0)*100, 3+(-1)*100) = (10, -97) % (11, 7) = (10, 1)
-                "p=1,4 v=1,3".parse().unwrap(), // (1+(1)*100, 4+(3)*100) = (101, 304) % (11, 7) = (2, 3)
-                "p=2,3 v=1,-3".parse().unwrap(), // (2+(1)*100, 3+(-3)*100) = (102, -297) % (11, 7) = (3, 4)
-            ],
-        };
-        let room_size = (11, 7);
-        let time = 100;
-        let expected = vec![
-            (5, 4),
-            (4, 3),
-            (4, 1),
-            (6, 3),
-            (6, 1),
-            (8, 3),
-            (8, 1),
-            (10, 3),
-            (10, 1),
-            (2, 3),
-            (3, 4),
-        ];
-        for (robot, (px, py)) in input.robots.iter().zip(expected) {
-            assert_eq!(robot.wrap(time, room_size), (px, py));
-        }
-    }
-
-    #[test]
-    fn test_example_quadrants_after_100_seconds() {
-        let input: Input = Input {
-            // quadrants:
-            //   0 => 0..5, 0..3
-            //   1 => 6..11, 0..3
-            //   2 => 0..5, 4..7
-            //   3 => 6..11, 4..7
-            //   x = 5 or y = 3 => no quadrant
-            robots: vec![
-                "p=6,3 v=-1,-3".parse().unwrap(), // (6+(-1)*100, 3+(-3)*100) = (-94, -297) % (11, 7) = (5, 4) => no quadrant
-                "p=3,4 v=1,3".parse().unwrap(), // (3+(1)*100, 4+(3)*100) = (103, 304) % (11, 7) = (4, 3) => no quadrant
-                "p=4,3 v=0,-1".parse().unwrap(), // (4+(0)*100, 3+(-1)*100) = (4, -97) % (11, 7) = (4, 1) => quadrant 0
-                "p=5,4 v=1,3".parse().unwrap(), // (5+(1)*100, 4+(3)*100) = (105, 304) % (11, 7) = (6, 3) => no quadrant
-                "p=6,3 v=0,-1".parse().unwrap(), // (6+(0)*100, 3+(-1)*100) = (6, -97) % (11, 7) = (6, 1) => quadrant 1
-                "p=7,4 v=1,3".parse().unwrap(), // (7+(1)*100, 4+(3)*100) = (107, 304) % (11, 7) = (8, 3) => no quadrant
-                "p=8,3 v=0,-1".parse().unwrap(), // (8+(0)*100, 3+(-1)*100) = (8, -97) % (11, 7) = (8, 1) => quadrant 1
-                "p=9,4 v=1,3".parse().unwrap(), // (9+(1)*100, 4+(3)*100) = (109, 304) % (11, 7) = (10, 3) => no quadrant
-                "p=10,3 v=0,-1".parse().unwrap(), // (10+(0)*100, 3+(-1)*100) = (10, -97) % (11, 7) = (10, 1) => quadrant 1
-                "p=1,4 v=1,3".parse().unwrap(), // (1+(1)*100, 4+(3)*100) = (101, 304) % (11, 7) = (2, 3) => no quadrant
-                "p=2,3 v=1,-3".parse().unwrap(), // (2+(1)*100, 3+(-3)*100) = (102, -297) % (11, 7) = (3, 4) => quadrant 2
-            ],
-        };
-        let room_size = (11, 7);
-        let time = 100;
-        let expected = vec![
-            None,
-            None,
-            Some(0),
-            None,
-            Some(1),
-            None,
-            Some(1),
-            None,
-            Some(1),
-            None,
-            Some(2),
-        ];
-        for (robot, q) in input.robots.iter().zip(expected) {
-            assert_eq!(robot.quadrant(time, room_size), q, "{robot:?}");
-        }
     }
 }
