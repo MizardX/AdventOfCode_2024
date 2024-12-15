@@ -56,9 +56,9 @@ pub fn part_1(input: &Input) -> usize {
 
 #[must_use]
 pub fn part_2(input: &Input) -> usize {
-    let mut state = input.initial_state.to_expanded();
+    let mut state = ExpandedState::from_state(&input.initial_state);
     for &mv in &input.moves {
-        let Some(ahead) = state.0.robot.move_by(mv) else {
+        let Some(ahead) = state.robot.move_by(mv) else {
             continue; // Moved off the board
         };
         if let Some(&Tile::Wall) = input.grid.get(ahead.x / 2, ahead.y) {
@@ -69,16 +69,16 @@ pub fn part_2(input: &Input) -> usize {
         };
         // Remove old positions, so they do not overlap with new positions in the set
         for &pushable_box in &pushable_boxes {
-            state.0.boxes.remove(&pushable_box);
+            state.boxes.remove(&pushable_box);
         }
         // Add new positions
         for &pushable_box in &pushable_boxes {
             let new_position = pushable_box.move_by(mv).unwrap();
-            state.0.boxes.insert(new_position);
+            state.boxes.insert(new_position);
         }
-        state.0.robot = ahead;
+        state.robot = ahead;
     }
-    state.0.boxes.iter().map(Position::gps_coordinate).sum()
+    state.boxes.iter().map(Position::gps_coordinate).sum()
 }
 
 /// A static tile of the map
@@ -191,52 +191,50 @@ impl State {
             }
         }
     }
-
-    /// Expand the state by doubling the x coordinates
-    fn to_expanded(&self) -> Expanded {
-        let boxes = self.boxes.iter().map(Position::expand).collect();
-        Expanded(Self {
-            robot: self.robot.expand(),
-            boxes,
-        })
-    }
 }
 
-struct Expanded(State);
+struct ExpandedState {
+    robot: Position,
+    boxes: HashSet<Position>,
+}
 
-impl Expanded {
+impl ExpandedState {
+    pub fn from_state(state: &State) -> Self {
+        Self {
+            robot: state.robot.expand(),
+            boxes: state.boxes.iter().map(Position::expand).collect(),
+        }
+    }
 
     /// Find all boxes that must be moved in a direction, assuming expanded coordinates
     fn pushable_boxes(&self, mv: Move, input: &Input) -> Option<Vec<Position>> {
         let mut boxes = Vec::new();
-        let mut pending = vec![self.0.robot];
+        let mut pending = vec![self.robot];
         while let Some(pos) = pending.pop() {
             let ahead = pos.move_by(mv)?;
             let ahead_left = ahead.move_by(Move::Left)?;
             let ahead_right = ahead.move_by(Move::Right)?;
-            match input.grid.get(ahead.x / 2, ahead.y)? {
-                Tile::Wall => return None,
-                Tile::Empty if self.0.boxes.contains(&ahead) => {
-                    // Left half of a box
-                    boxes.push(ahead);
-                    if mv.is_horizontal() {
-                        pending.push(ahead.move_by(mv)?);
-                    } else {
-                        pending.push(ahead);
-                        pending.push(ahead_right);
-                    }
+            if matches!(input.grid.get(ahead.x / 2, ahead.y)?, Tile::Wall) {
+                return None;
+            }
+            if self.boxes.contains(&ahead) {
+                // Left half of a box
+                boxes.push(ahead);
+                if mv.is_horizontal() {
+                    pending.push(ahead.move_by(mv)?);
+                } else {
+                    pending.push(ahead);
+                    pending.push(ahead_right);
                 }
-                Tile::Empty if self.0.boxes.contains(&ahead_left) => {
-                    // Right half of a box
-                    boxes.push(ahead_left);
-                    if mv.is_horizontal() {
-                        pending.push(ahead.move_by(mv)?);
-                    } else {
-                        pending.push(ahead);
-                        pending.push(ahead_left);
-                    }
+            } else if self.boxes.contains(&ahead_left) {
+                // Right half of a box
+                boxes.push(ahead_left);
+                if mv.is_horizontal() {
+                    pending.push(ahead.move_by(mv)?);
+                } else {
+                    pending.push(ahead);
+                    pending.push(ahead_left);
                 }
-                Tile::Empty => (),
             }
         }
         Some(boxes)
