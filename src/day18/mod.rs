@@ -1,5 +1,5 @@
 use std::cmp::Reverse;
-use std::collections::{BinaryHeap, HashMap, HashSet};
+use std::collections::{BinaryHeap, HashSet};
 use std::str::FromStr;
 use thiserror::Error;
 
@@ -24,45 +24,30 @@ pub fn run() {
 #[must_use]
 pub fn part_1(input: &Input, size: u8, first: usize) -> usize {
     let blocked: HashSet<_> = input.byte_locations[..first].iter().copied().collect();
-    astar(&blocked, size).unwrap_or(0)
+    djikstra(&blocked, size).unwrap_or(0)
 }
 
 #[must_use]
-fn astar(blocked: &HashSet<(u8, u8)>, size: u8) -> Option<usize> {
+fn djikstra(blocked: &HashSet<(u8, u8)>, size: u8) -> Option<usize> {
     let start = (0_u8, 0_u8);
     let goal = (size - 1, size - 1);
     let width = size;
     let height = size;
-    // A* search
-    let mut open_set = BinaryHeap::new();
-    let mut came_from = HashMap::new();
-    let mut g_score = HashMap::new();
-    let mut f_score = HashMap::new();
-    open_set.push(Reverse((0, start)));
-    g_score.insert(start, 0);
-    f_score.insert(start, manhattan_distance(start, goal));
-    while let Some(Reverse((_, current))) = open_set.pop() {
-        if current == goal {
-            return Some(*g_score.get(&current).unwrap());
+    let mut visited = HashSet::new();
+    let mut queue = BinaryHeap::new();
+    queue.push(Reverse((0, start)));
+    while let Some(Reverse((dist, pos))) = queue.pop() {
+        if pos == goal {
+            return Some(dist);
         }
-        for neighbor in neighbors(current, blocked, width, height) {
-            let tentative_g_score = g_score.get(&current).unwrap() + 1;
-            if tentative_g_score < *g_score.get(&neighbor).unwrap_or(&usize::MAX) {
-                came_from.insert(neighbor, current);
-                g_score.insert(neighbor, tentative_g_score);
-                f_score.insert(
-                    neighbor,
-                    tentative_g_score + manhattan_distance(neighbor, goal),
-                );
-                open_set.push(Reverse((f_score[&neighbor], neighbor)));
-            }
+        if !visited.insert(pos) {
+            continue;
+        }
+        for neighbor in neighbors(pos, blocked, width, height) {
+            queue.push(Reverse((dist + 1, neighbor)));
         }
     }
     None
-}
-
-fn manhattan_distance((x1, y1): (u8, u8), (x2, y2): (u8, u8)) -> usize {
-    x1.abs_diff(x2) as usize + y1.abs_diff(y2) as usize
 }
 
 fn neighbors(
@@ -145,10 +130,6 @@ impl DisjointSet {
             parents: (0..size).collect(),
             sizes: vec![1; size],
         }
-    }
-
-    fn size(&self, root: usize) -> Option<usize> {
-        (root == self.parents[root]).then_some(self.sizes[root])
     }
 
     fn find(&mut self, mut node: usize) -> usize {
