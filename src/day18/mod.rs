@@ -24,11 +24,11 @@ pub fn run() {
 #[must_use]
 pub fn part_1(input: &Input, size: u8, first: usize) -> usize {
     let blocked: HashSet<_> = input.byte_locations[..first].iter().copied().collect();
-    shortest_distance(&blocked, size).unwrap_or(0)
+    astar(&blocked, size).unwrap_or(0)
 }
 
 #[must_use]
-fn shortest_distance(blocked: &HashSet<(u8, u8)>, size: u8) -> Option<usize> {
+fn astar(blocked: &HashSet<(u8, u8)>, size: u8) -> Option<usize> {
     let start = (0_u8, 0_u8);
     let goal = (size - 1, size - 1);
     let width = size;
@@ -89,21 +89,92 @@ fn neighbors(
 
 #[must_use]
 pub fn part_2(input: &Input, size: u8) -> String {
-    let mut lo = 0;
-    let mut hi = input.byte_locations.len();
-    while lo < hi {
-        let mid = lo + (hi - lo + 1) / 2;
-        if shortest_distance(
-            &input.byte_locations[..mid].iter().copied().collect(),
-            size,
-        ).is_some() {
-            lo = mid;
-        } else {
-            hi = mid - 1;
+    let stride = size as usize;
+    let mut ds = DisjointSet::new(stride * stride);
+    let mut blocked: HashSet<_> = input.byte_locations.iter().copied().collect();
+    for r in 0..size {
+        for c in 0..size {
+            if blocked.contains(&(r, c)) {
+                continue;
+            }
+            let ix = r as usize * stride + c as usize;
+            if r > 0 && !blocked.contains(&(r - 1, c)) {
+                ds.union(ix, ix - stride);
+            }
+            if c > 0 && !blocked.contains(&(r, c - 1)) {
+                ds.union(ix, ix - 1);
+            }
         }
     }
-    let (x, y) = input.byte_locations[lo];
-    format!("{x},{y}")
+    let start_ix = 0;
+    let end_ix = stride * stride - 1;
+    if ds.find(start_ix) == ds.find(end_ix) {
+        return "always reachable".to_string();
+    }
+    for &(r, c) in input.byte_locations.iter().rev() {
+        let ix = r as usize * stride + c as usize;
+        if r > 0 && !blocked.contains(&(r - 1, c)) {
+            ds.union(ix, ix - stride);
+        }
+        if c > 0 && !blocked.contains(&(r, c - 1)) {
+            ds.union(ix, ix - 1);
+        }
+        if r + 1 < size && !blocked.contains(&(r + 1, c)) {
+            ds.union(ix, ix + stride);
+        }
+        if c + 1 < size && !blocked.contains(&(r, c + 1)) {
+            ds.union(ix, ix + 1);
+        }
+        blocked.remove(&(r, c));
+        if ds.find(start_ix) == ds.find(end_ix) {
+            return format!("{r},{c}");
+        }
+    }
+    "unreachable".to_string()
+}
+
+#[derive(Debug, Clone)]
+struct DisjointSet {
+    parents: Vec<usize>,
+    sizes: Vec<usize>,
+}
+
+impl DisjointSet {
+    fn new(size: usize) -> Self {
+        Self {
+            parents: (0..size).collect(),
+            sizes: vec![1; size],
+        }
+    }
+
+    fn size(&self, root: usize) -> Option<usize> {
+        (root == self.parents[root]).then_some(self.sizes[root])
+    }
+
+    fn find(&mut self, mut node: usize) -> usize {
+        let mut parent = self.parents[node];
+        let mut grandparent = self.parents[parent];
+        while parent != grandparent {
+            self.parents[node] = grandparent;
+            node = parent;
+            parent = self.parents[node];
+            grandparent = self.parents[parent];
+        }
+        parent
+    }
+
+    fn union(&mut self, a: usize, b: usize) {
+        let mut a = self.find(a);
+        let mut b = self.find(b);
+        if a == b {
+            return;
+        }
+        if self.sizes[a] < self.sizes[b] {
+            (a, b) = (b, a);
+        }
+        self.parents[b] = a;
+        self.sizes[a] += self.sizes[b];
+    }
 }
 
 #[derive(Debug, Clone)]
