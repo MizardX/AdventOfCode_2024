@@ -11,26 +11,29 @@ const EXAMPLE2: &str = include_str!("example2.txt");
 const INPUT: &str = include_str!("input.txt");
 
 pub fn run() {
-    println!(".Day 17");
+    // println!(".Day 17");
 
-    println!("++Example 1");
-    let example1 = EXAMPLE1.parse().expect("Parse example 1");
-    println!(
-        "|+-Part 1: {} (expected 4,6,3,5,6,3,5,2,1,0)",
-        part_1(&example1)
-    );
-    // println!("|'-Part 2: {} (expected XXX)", part_2(&example1));
+    // println!("++Example 1");
+    // let example1 = EXAMPLE1.parse().expect("Parse example 1");
+    // println!(
+    //     "|+-Part 1: {} (expected 4,6,3,5,6,3,5,2,1,0)",
+    //     part_1(&example1)
+    // );
+    // // println!("|'-Part 2: {} (expected XXX)", part_2(&example1));
 
-    println!("++Example 2");
-    let example2 = EXAMPLE2.parse().expect("Parse example 2");
-    println!("|+-Part 1: {} (expected 5,7,3,0)", part_1(&example2));
-    println!("|+-Part 2: {} (expected 117_440)", part_2(&example2, 1 << 18));
+    // println!("++Example 2");
+    // let example2 = EXAMPLE2.parse().expect("Parse example 2");
+    // println!("|+-Part 1: {} (expected 5,7,3,0)", part_1(&example2));
+    // println!("|+-Part 2: {} (expected 117_440)", part_2(&example2, 1 << 18));
 
-    println!("++Input");
-    let input = INPUT.parse().expect("Parse input");
-    println!("|+-Part 1: {} (expected 1,5,0,5,2,0,1,3,5)", part_1(&input));
-    println!("|'-Part 2: {} (expected XXX)", part_2(&input, 1 << 48));
-    println!("')");
+    // println!("++Input");
+    // let input = INPUT.parse().expect("Parse input");
+    // println!("Part 1 normal: {}", part_1(&input));
+    // println!("Part 2 opt: {:o}", part2_run(input.initial_state.register_a));
+    // println!("|+-Part 1: {} (expected 1,5,0,5,2,0,1,3,5)", part_1(&input));
+    // println!("|'-Part 2: {} (expected XXX)", part_2(&input, 1 << 48));
+    // println!("')");
+    println!("Part 2: {}", part2_opt());
 }
 
 #[must_use]
@@ -75,6 +78,35 @@ pub fn part_2(input: &Input, max: u64) -> u64 {
         .collect::<Vec<_>>();
     println!("Solutions: {res:?}");
     res.into_iter().min().unwrap_or(0)
+}
+
+fn part2_opt() -> u64 {
+    const EXPECTED: u64= 0o_24_13_75_03_41_15_55_30_u64;
+    ((1<<45)..(1<<48))
+    .into_par_iter()
+    .find_first(|&x| part2_run(x) == EXPECTED)
+    .unwrap_or(0)
+}
+
+// 2,4,1,3,7,5,0,3,4,1,1,5,5,5,3,0
+// 2 4 - bst a - b = a & 7
+// 1 3 - bxl 3 - b ^= 3	    - b = (a & 7) ^ 3
+// 7 5 - cdv b - c = a >> b - c = a >> ((a & 7) ^ 3)
+// 0 3 - adv 3 - a >>= 3    - a >>= 3
+// 4 1 - bxc 1 - b ^= c     - b = (a & 7) ^ 3 ^ (a >> ((a & 7) ^ 3))
+// 1 5 - bxl 5 - b ^= 5     - b = (a & 7) ^ 3 ^ (a >> ((a & 7) ^ 3)) ^ 5
+// 5 5 - out b - out(b & 7) - out(((a & 7) ^ 3 ^ (a >> ((a & 7) ^ 3)) ^ 5) & 7)
+// 3 0 - jnz 0 - if (a) goto 0
+fn part2_run(mut a: u64) -> u64 {
+    let mut out = 0;
+    //while a != 0 {
+    for _ in 0..16 {
+        // ((a & 7) ^ 3 ^ (a >> ((a & 7) ^ 3)) ^ 5) & 7
+        // (a ^ (a >> ((a & 7) ^ 3)) ^ 6) & 7
+        out = (out << 3) | ((a ^ (a >> ((a & 7) ^ 3)) ^ 6) & 7);
+        a >>= 3;
+    }
+    out
 }
 
 #[derive(Debug, Clone, Copy)]
