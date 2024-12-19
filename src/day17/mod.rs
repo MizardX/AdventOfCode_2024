@@ -1,10 +1,6 @@
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
-use std::{
-    fmt::Display,
-    str::FromStr,
-};
+use std::fmt::{Display, Write};
+use std::str::FromStr;
 use thiserror::Error;
-use std::fmt::Write;
 
 const EXAMPLE1: &str = include_str!("example1.txt");
 const EXAMPLE2: &str = include_str!("example2.txt");
@@ -19,17 +15,19 @@ pub fn run() {
         "|+-Part 1: {} (expected 4,6,3,5,6,3,5,2,1,0)",
         part_1(&example1)
     );
-    // println!("|'-Part 2: {} (expected XXX)", part_2(&example1));
 
     println!("++Example 2");
     let example2 = EXAMPLE2.parse().expect("Parse example 2");
     println!("|+-Part 1: {} (expected 5,7,3,0)", part_1(&example2));
-    println!("|+-Part 2: {} (expected 117_440)", part_2(&example2, 1 << 18));
+    println!("|+-Part 2: {} (expected 117_440)", part_2(&example2));
 
     println!("++Input");
     let input = INPUT.parse().expect("Parse input");
     println!("|+-Part 1: {} (expected 1,5,0,5,2,0,1,3,5)", part_1(&input));
-    println!("|'-Part 2: {} (expected XXX)", part_2(&input, 1 << 48));
+    println!(
+        "|'-Part 2: {} (expected 236_581_108_670_061)",
+        part_2(&input)
+    );
     println!("')");
 }
 
@@ -37,7 +35,7 @@ pub fn run() {
 #[allow(clippy::cast_possible_truncation)]
 pub fn part_1(input: &Input) -> String {
     let mut state = input.initial_state;
-    let output = state.execute(&input.instructions);
+    let output = state.execute_loop(&input.instructions);
     let mut result = String::new();
     for &value in &output.to_vec() {
         if !result.is_empty() {
@@ -49,32 +47,37 @@ pub fn part_1(input: &Input) -> String {
 }
 
 #[must_use]
-pub fn part_2(input: &Input, max: u64) -> u64 {
-    let expected = Output::new(
-        input
-            .target
-            .iter()
-            .copied()
-            .rev()
-            .fold(0, |acc, x| (acc << 3) + u64::from(x)),
-        input.target.len() as u64 * 3,
-    );
-    assert_eq!(expected.to_vec(), input.target);
-    let res = (0..max)
-        .into_par_iter()
-        .filter_map(|x| {
-            let mut state = input.initial_state;
-            state.register_a = x;
-            let output = state.execute(&input.instructions);
-            if output.to_u64() == expected.to_u64() {
-                Some(x)
-            } else {
-                None
+pub fn part_2(input: &Input) -> u64 {
+    fn inner(
+        original_a: u64,
+        target: &[u8],
+        instructions: &[Instruction],
+        index: usize,
+    ) -> Option<u64> {
+        for digit in 0..=7 {
+            let candidate_a = (original_a << 3) | digit;
+            if candidate_a == 0 {
+                continue;
             }
-        })
-        .collect::<Vec<_>>();
-    println!("Solutions: {res:?}");
-    res.into_iter().min().unwrap_or(0)
+            let output_digit = State::new(candidate_a, 0, 0).execute_one_cycle(instructions);
+            if u64::from(target[index]) == output_digit {
+                if index == 0 {
+                    return Some(candidate_a);
+                }
+                if let Some(result) = inner(candidate_a, target, instructions, index - 1) {
+                    return Some(result);
+                }
+            }
+        }
+        None
+    }
+    inner(
+        0,
+        &input.target,
+        &input.instructions,
+        input.target.len() - 1,
+    )
+    .expect("no solution found")
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -121,7 +124,7 @@ enum Instruction {
     /// Jumps to the instruction at the offset of the argument if register A is non-zero
     Jnz(u8),
     /// Xor register B with register C, consuming and ignoring argument
-    Bxc(u8),
+    Bxc(#[allow(unused)] u8),
     /// Outputs the value of argument, modulo 8
     Out(Operand),
     /// Shift register B left by argument number of bits, but stores in register A
@@ -148,21 +151,6 @@ impl TryFrom<(u8, u8)> for Instruction {
     }
 }
 
-impl Display for Instruction {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Adv(op) => write!(f, "a >>= {op:?}"),
-            Self::Bxl(lt) => write!(f, "b ^= {lt:o}"),
-            Self::Bst(op) => write!(f, "b = 7 & {op:?}"),
-            Self::Jnz(lt) => write!(f, "if (a) goto {lt:o}"),
-            Self::Bxc(lt) => write!(f, "b ^= c // {lt:o}"),
-            Self::Out(op) => write!(f, "out({op:?})"),
-            Self::Bdv(op) => write!(f, "b = a >> {op:?}"),
-            Self::Cdv(op) => write!(f, "c = a >> {op:?}"),
-        }
-    }
-}
-
 #[derive(Debug, Clone, Copy)]
 struct State {
     register_a: u64,
@@ -172,6 +160,15 @@ struct State {
 }
 
 impl State {
+    fn new(register_a: u64, register_b: u64, register_c: u64) -> Self {
+        Self {
+            register_a,
+            register_b,
+            register_c,
+            instruction_pointer: 0,
+        }
+    }
+
     fn get_value(&self, operand: Operand) -> u64 {
         match operand {
             Operand::Literal(value) => u64::from(value),
@@ -181,53 +178,68 @@ impl State {
         }
     }
 
-    fn execute(&mut self, instructions: &[Instruction]) -> Output {
-        let mut output = 0;
-        let mut shift = 0;
-        while let Some(&instr) = instructions.get(self.instruction_pointer) {
-            // let ip = self.instruction_pointer;
-            // let a = self.register_a;
-            // let b = self.register_b;
-            // let c = self.register_c;
-            // let in_byte = instructions.get(ip).copied().unwrap_or(0);
-            // let op_byte = instructions.get(ip + 1).copied().unwrap_or(0);
-            // println!("[{ip:3o} A:{a:<9o} B:{b:<9o} C:{c:<9o}] {in_byte} {op_byte} --> {instruction} {operand} ({value:o})");
-            match instr {
-                Instruction::Adv(op) => {
-                    let value = self.get_value(op);
-                    self.register_a >>= value;
-                }
-                Instruction::Bxl(lit) => {
-                    self.register_b ^= u64::from(lit);
-                }
-                Instruction::Bst(op) => {
-                    let value = self.get_value(op);
-                    self.register_b = value % 8;
-                }
-                Instruction::Jnz(lit) => {
-                    if self.register_a != 0 {
-                        self.instruction_pointer = lit as usize >> 1;
-                        continue;
-                    }
-                }
-                Instruction::Bxc(_) => {
-                    self.register_b ^= self.register_c;
-                }
-                Instruction::Out(op) => {
-                    let value = self.get_value(op);
-                    output |= (value & 7) << shift;
-                    shift += 3;
-                }
-                Instruction::Bdv(op) => {
-                    let value = self.get_value(op);
-                    self.register_b = self.register_a >> value;
-                }
-                Instruction::Cdv(op) => {
-                    let value = self.get_value(op);
-                    self.register_c = self.register_a >> value;
+    fn step(&mut self, instruction: Instruction) -> Option<u64> {
+        let mut out = None;
+        match instruction {
+            Instruction::Adv(op) => {
+                let value = self.get_value(op);
+                self.register_a >>= value;
+            }
+            Instruction::Bxl(lit) => {
+                self.register_b ^= u64::from(lit);
+            }
+            Instruction::Bst(op) => {
+                let value = self.get_value(op);
+                self.register_b = value % 8;
+            }
+            Instruction::Jnz(lit) => {
+                if self.register_a != 0 {
+                    self.instruction_pointer = lit as usize >> 1;
+                    return None;
                 }
             }
-            self.instruction_pointer += 1;
+            Instruction::Bxc(_) => {
+                self.register_b ^= self.register_c;
+            }
+            Instruction::Out(op) => {
+                let value = self.get_value(op);
+                out = Some(value & 7);
+            }
+            Instruction::Bdv(op) => {
+                let value = self.get_value(op);
+                self.register_b = self.register_a >> value;
+            }
+            Instruction::Cdv(op) => {
+                let value = self.get_value(op);
+                self.register_c = self.register_a >> value;
+            }
+        }
+        self.instruction_pointer += 1;
+        out
+    }
+
+    fn execute_one_cycle(&mut self, instructions: &[Instruction]) -> u64 {
+        let mut output = 0;
+        // Optimization: Last instruction is always JNZ 0, and that is the only
+        // jump instruction. So we can run the instuctions in order, ignoring
+        // the instruction pointer.
+        for &instr in instructions {
+            if let Some(out) = self.step(instr) {
+                output = out;
+            }
+        }
+        output
+    }
+
+    fn execute_loop(&mut self, instructions: &[Instruction]) -> Output {
+        let mut output = 0;
+        let mut shift = 0;
+        // Follow the instruction pointer until it goes out of bounds
+        while let Some(&instr) = instructions.get(self.instruction_pointer) {
+            if let Some(out) = self.step(instr) {
+                output |= out << shift;
+                shift += 3;
+            }
         }
         Output::new(output, shift)
     }
@@ -244,11 +256,7 @@ impl Output {
         Self { value, shift }
     }
 
-    fn to_u64(&self) -> u64 {
-        self.value
-    }
-
-    fn to_vec(&self) -> Vec<u8> {
+    fn to_vec(self) -> Vec<u8> {
         let mut result = Vec::new();
         let mut value = self.value;
         let mut shift = self.shift;
@@ -361,7 +369,7 @@ mod tests {
             .parse()
             .expect("Parse example");
         let mut state = input.initial_state;
-        let output = state.execute(&input.instructions).to_vec();
+        let output = state.execute_loop(&input.instructions).to_vec();
         assert_eq!(output, &[]);
         assert_eq!(state.register_b, 1);
     }
@@ -372,7 +380,7 @@ mod tests {
             .parse()
             .expect("Parse example");
         let mut state = input.initial_state;
-        let output = state.execute(&input.instructions).to_vec();
+        let output = state.execute_loop(&input.instructions).to_vec();
         assert_eq!(output, &[0, 1, 2]);
     }
 
@@ -382,7 +390,7 @@ mod tests {
             .parse()
             .expect("Parse example");
         let mut state = input.initial_state;
-        let output = state.execute(&input.instructions).to_vec();
+        let output = state.execute_loop(&input.instructions).to_vec();
         assert_eq!(output, &[4, 2, 5, 6, 7, 7, 7, 7, 3, 1, 0]);
         assert_eq!(state.register_a, 0);
     }
@@ -393,7 +401,7 @@ mod tests {
             .parse()
             .expect("Parse example");
         let mut state = input.initial_state;
-        let output = state.execute(&input.instructions).to_vec();
+        let output = state.execute_loop(&input.instructions).to_vec();
         assert_eq!(output, &[]);
         assert_eq!(state.register_b, 26);
     }
@@ -404,7 +412,7 @@ mod tests {
             .parse()
             .expect("Parse example");
         let mut state = input.initial_state;
-        let output = state.execute(&input.instructions).to_vec();
+        let output = state.execute_loop(&input.instructions).to_vec();
         assert_eq!(output, &[]);
         assert_eq!(state.register_b, 44354);
     }
