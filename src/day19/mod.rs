@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::str::FromStr;
 use thiserror::Error;
 
@@ -9,56 +10,165 @@ pub fn run() {
 
     println!("++Example");
     let example = EXAMPLE.parse().expect("Parse example");
-    println!("|+-Part 1: {} (expected 6)", part_1(&example));
-    println!("|'-Part 2: {} (expected 16)", part_2(&example));
+    let (part1, part2) = part_1_and_2(&example);
+    println!("|+-Part 1: {part1} (expected 6)");
+    println!("|'-Part 2: {part2} (expected 16)");
 
     println!("++Input");
     let input = INPUT.parse().expect("Parse input");
-    println!("|+-Part 1: {} (expected 293)", part_1(&input));
-    println!("|'-Part 2: {} (expected 623_924_810_770_264)", part_2(&input));
+    let (part1, part2) = part_1_and_2(&input);
+    println!("|+-Part 1: {part1} (expected 293)");
+    println!("|'-Part 2: {part2} (expected 623_924_810_770_264)");
     println!("')");
 }
 
 #[must_use]
-pub fn part_1(input: &Input) -> usize {
-    count_combinations(input).0
-}
-
-#[must_use]
-pub fn part_2(input: &Input) -> usize {
-    count_combinations(input).1
-}
-
-fn count_combinations(input: &Input) -> (usize, usize) {
+pub fn part_1_and_2(input: &Input) -> (u64, u64) {
+    let mut matcher = AhoCorasick::new();
+    for piece in &input.pieces {
+        matcher.add_pattern(piece);
+    }
+    matcher.build_links();
+    let mut count_matches = 0;
     let mut sum_counts = 0;
-    let mut count_nonzero = 0;
     for pattern in &input.target_patterns {
-        // if pattern can be built from pieces, increment count
-        let n = pattern.colors.len();
-        let mut dp = vec![0; n + 1];
-        dp[n] = 1;
-        for i in (0..n).rev() {
-            for piece in &input.pieces {
-                if pattern.colors[i..].starts_with(&piece.colors) {
-                    dp[i] += dp[i + piece.colors.len()];
-                }
+        let count = matcher.count_combinations(pattern);
+        sum_counts += count;
+        count_matches += u64::from(0 != count);
+    }
+    (count_matches, sum_counts)
+}
+
+#[derive(Clone, Debug)]
+struct ACNode {
+    children: [Option<usize>; 5],
+    suffix_link: usize,
+    output_link: usize,
+    output: Vec<usize>,
+}
+
+impl ACNode {
+    fn new() -> Self {
+        Self {
+            children: [None; 5],
+            suffix_link: 0,
+            output_link: 0,
+            output: Vec::new(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct AhoCorasick {
+    nodes: Vec<ACNode>,
+}
+
+impl AhoCorasick {
+    fn new() -> Self {
+        Self {
+            nodes: vec![ACNode::new(); 1],
+        }
+    }
+
+    fn add_pattern(&mut self, pattern: &Pattern) {
+        let mut node = 0;
+        for &color in &pattern.colors {
+            let color = usize::from(color);
+            if let Some(next) = self.nodes[node].children[color] {
+                node = next;
+            } else {
+                let next = self.nodes.len();
+                self.nodes.push(ACNode::new());
+                self.nodes[node].children[color] = Some(next);
+                node = next;
             }
         }
-        let count = dp[0];
-        sum_counts += count;
-        count_nonzero += usize::from(count != 0);
+        self.nodes[node].output.push(pattern.colors.len());
     }
-    (count_nonzero, sum_counts)
+
+    fn build_links(&mut self) {
+        let mut queue = VecDeque::new();
+        for color in Color::all() {
+            let color = usize::from(color);
+            if let &Some(child) = &self.nodes[0].children[color] {
+                queue.push_back(child);
+            }
+        }
+        while let Some(node) = queue.pop_front() {
+            for color in Color::all() {
+                let color_ix = usize::from(color);
+                if let &Some(child) = &self.nodes[node].children[color_ix] {
+                    let mut link = self.nodes[node].suffix_link;
+                    while link != 0 && self.nodes[link].children[color_ix].is_none() {
+                        link = self.nodes[link].suffix_link;
+                    }
+                    if let Some(next) = self.nodes[link].children[color_ix] {
+                        self.nodes[child].suffix_link = next;
+                    }
+                    queue.push_back(child);
+                }
+            }
+            self.nodes[node].output_link = self.nodes[node].suffix_link;
+        }
+    }
+
+    fn count_combinations(&self, text: &Pattern) -> u64 {
+        let mut node = 0;
+        let mut result = vec![0; text.colors.len() + 1];
+        result[0] = 1;
+        for (i, &color) in text.colors.iter().enumerate() {
+            let color = usize::from(color);
+            while node != 0 && self.nodes[node].children[color].is_none() {
+                node = self.nodes[node].suffix_link;
+            }
+            if let Some(next) = self.nodes[node].children[color] {
+                node = next;
+            }
+            let mut link = node;
+            while link != 0 {
+                for &len in &self.nodes[link].output {
+                    if i + 1 >= len {
+                        result[i + 1] += result[i + 1 - len];
+                    }
+                }
+                link = self.nodes[link].output_link;
+            }
+        }
+        result[text.colors.len()]
+    }
 }
 
-// white (w), blue (u), black (b), red (r), or green (g)
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Color {
     White,
     Blue,
     Black,
     Red,
     Green,
+}
+
+impl Color {
+    pub fn all() -> [Color; 5] {
+        [
+            Color::White,
+            Color::Blue,
+            Color::Black,
+            Color::Red,
+            Color::Green,
+        ]
+    }
+}
+
+impl From<Color> for usize {
+    fn from(color: Color) -> usize {
+        match color {
+            Color::White => 0,
+            Color::Blue => 1,
+            Color::Black => 2,
+            Color::Red => 3,
+            Color::Green => 4,
+        }
+    }
 }
 
 impl TryFrom<u8> for Color {
@@ -122,9 +232,7 @@ impl FromStr for Input {
         if lines.next() != Some("") {
             return Err(ParseInputError::IncompleteInput);
         }
-        let target_patterns = lines
-            .map(str::parse)
-            .collect::<Result<Vec<_>, _>>()?;
+        let target_patterns = lines.map(str::parse).collect::<Result<Vec<_>, _>>()?;
         Ok(Self {
             pieces,
             target_patterns,
