@@ -21,30 +21,17 @@ pub fn run() {
 
 #[must_use]
 pub fn part_1(input: &Input) -> usize {
-    let mut count = 0;
-    for pattern in &input.target_patterns {
-        // if pattern can be built from pieces, increment count
-        let n = pattern.colors.len();
-        let mut dp = vec![false; n + 1];
-        dp[n] = true;
-        for i in (0..n).rev() {
-            for piece in &input.pieces {
-                if pattern.colors[i..].starts_with(&piece.colors) && dp[i + piece.colors.len()] {
-                    dp[i] = true;
-                    break; // for piece
-                }
-            }
-        }
-        if dp[0] {
-            count += 1;
-        }
-    }
-    count
+    count_combinations(input).0
 }
 
 #[must_use]
 pub fn part_2(input: &Input) -> usize {
+    count_combinations(input).1
+}
+
+fn count_combinations(input: &Input) -> (usize, usize) {
     let mut sum_counts = 0;
+    let mut count_nonzero = 0;
     for pattern in &input.target_patterns {
         // if pattern can be built from pieces, increment count
         let n = pattern.colors.len();
@@ -57,9 +44,11 @@ pub fn part_2(input: &Input) -> usize {
                 }
             }
         }
-        sum_counts += dp[0];
+        let count = dp[0];
+        sum_counts += count;
+        count_nonzero += usize::from(count != 0);
     }
-    sum_counts
+    (count_nonzero, sum_counts)
 }
 
 // white (w), blue (u), black (b), red (r), or green (g)
