@@ -1,5 +1,4 @@
-use std::collections::btree_map::Keys;
-use std::collections::{BinaryHeap, HashSet, VecDeque};
+use std::hash::Hash;
 use std::str::FromStr;
 use thiserror::Error;
 
@@ -24,130 +23,125 @@ pub fn run() {
 #[must_use]
 pub fn part_1(input: &Input) -> usize {
     let mut sum = 0;
+    let operator_stack = NumRobot(DirRobot(DirRobot(Human)));
     for code in &input.codes {
-        let state = State::new(code);
-        sum += astar(state).unwrap();
+        let (cost, path) = operator_stack.cost_of_full_code(code);
+        let num = code.iter().fold(0, |acc, &num| {
+            acc * 10
+                + match num {
+                    Num::Zero => 0,
+                    Num::One => 1,
+                    Num::Two => 2,
+                    Num::Three => 3,
+                    Num::Four => 4,
+                    Num::Five => 5,
+                    Num::Six => 6,
+                    Num::Seven => 7,
+                    Num::Eight => 8,
+                    Num::Nine => 9,
+                    Num::A => return acc,
+                }
+        });
+        println!("code {code:?} cost {cost} num {num} path {path:?}");
+        sum += cost * num;
     }
     sum
 }
 
-#[expect(unused)]
-fn astar(start: State) -> Option<usize> {
-    let mut open = BinaryHeap::new();
-    let mut closed = HashSet::new();
-    open.push(start);
-    while let Some(current) = open.pop() {
-        if current.code_ix == current.code_seq.len() {
-            return Some(current.dist);
-        }
-        if !closed.insert(current) {
-            continue;
-        }
-        for next in current.moves() {
-            if closed.contains(&next) {
+trait Operator {
+    type Item;
+    fn cost_of_move(&self, from: &Self::Item, to: &Self::Item, path: &mut Vec<Dir>) -> usize;
+
+    fn cost_of_full_code(&self, code: &[Self::Item]) -> (usize, Vec<Dir>) {
+        let mut path = Vec::new();
+        let total_cost = code
+            .windows(2)
+            .map(|pair| self.cost_of_move(&pair[0], &pair[1], &mut path))
+            .sum();
+        (total_cost, path)
+    }
+}
+
+struct Human;
+impl Operator for Human {
+    type Item = Dir;
+    fn cost_of_move(&self, _from: &Dir, &to: &Dir, path: &mut Vec<Dir>) -> usize {
+        path.push(to);
+        1
+    }
+}
+
+struct DirRobot<T>(T);
+impl<T> Operator for DirRobot<T>
+where
+    T: Operator<Item = Dir>,
+{
+    type Item = Dir;
+    fn cost_of_move(&self, &from: &Dir, &to: &Dir, path: &mut Vec<Dir>) -> usize {
+        let mut stack = Vec::new();
+        let mut distance = [(); 5].map(|()| (usize::MAX, Dir::A, vec![]));
+        stack.push((0, 0, from, Dir::A, vec![]));
+        while let Some((full_dist, dist, key, inner, path)) = stack.pop() {
+            if full_dist >= distance[key as usize].0 {
                 continue;
             }
-            open.push(next);
-        }
-    }
-    None
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-struct State<'a> {
-    dist: usize,
-    code_ix: usize,
-    keypad: Num,
-    directional1: Dir,
-    directional2: Dir,
-    code_seq: &'a [Num],
-}
-
-impl<'a> State<'a> {
-    pub fn new(code_seq: &'a [Num]) -> Self {
-        Self {
-            dist: 0,
-            code_ix: 0,
-            keypad: Num::A,
-            directional1: Dir::A,
-            directional2: Dir::A,
-            code_seq,
-        }
-    }
-
-    pub fn moves(self) -> impl Iterator<Item = Self> {
-        let Self {
-            dist,
-            code_ix,
-            keypad,
-            directional1,
-            directional2,
-            code_seq
-        } = self;
-        let next_code = code_seq[code_ix];
-        Dir::all().into_iter().filter_map(move |action| {
-            match (action, directional1, directional2) {
-                (Dir::A, Dir::A, Dir::A) => (keypad == next_code).then_some(Self {
-                    dist: dist + 1,
-                    code_ix: code_ix + 1,
-                    ..self
-                }),
-                (Dir::A, Dir::A, _) => keypad.move_finger(directional2).map(|new_keypad| Self {
-                    dist: dist + 1,
-                    keypad: new_keypad,
-                    ..self
-                }),
-                (Dir::A, _, _) => directional1
-                    .move_finger(directional1)
-                    .map(|new_directional1| Self {
-                        dist: dist + 1,
-                        directional1: new_directional1,
-                        ..self
-                    }),
-                (_, _, _) => directional2
-                    .move_finger(action)
-                    .map(|new_directional2| Self {
-                        dist: dist + 1,
-                        directional2: new_directional2,
-                        ..self
-                    }),
+            distance[key as usize].0 = full_dist;
+            distance[key as usize].1 = inner;
+            for (dir, next) in key.neighbors() {
+                let mut new_path = path.clone();
+                let move_cost = self.0.cost_of_move(&inner, &dir, &mut new_path);
+                let activate_cost = self.0.cost_of_move(&dir, &Dir::A, &mut vec![]);
+                stack.push((
+                    dist + move_cost + activate_cost,
+                    dist + move_cost,
+                    next,
+                    dir,
+                    new_path,
+                ));
             }
-        })
-    }
-
-    fn heuristic(&self) -> usize {
-        let Self {
-            code_ix,
-            keypad,
-            directional1,
-            directional2,
-            code_seq,
-            ..
-        } = *self;
-        let next_code = code_seq.get(code_ix).copied().unwrap_or(Num::A);
-        let mut h = code_seq.len() - code_ix;
-        h *= 10;
-        h += keypad.dist(next_code) as usize;
-        h *= 10;
-        h += directional1.dist(Dir::A) as usize;
-        h *= 10;
-        h += directional2.dist(Dir::A) as usize;
-        h
-    }
-
-    fn score(&self) -> usize {
-        self.dist + self.heuristic()
+            distance[key as usize].2 = path;
+        }
+        let &(total_cost, last_inner, ref new_path) = &distance[usize::from(to)];
+        path.extend_from_slice(new_path);
+        self.0.cost_of_move(&last_inner, &Dir::A, path);
+        total_cost
     }
 }
 
-impl PartialOrd for State<'_> {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-impl Ord for State<'_> {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        other.score().cmp(&self.score())
+struct NumRobot<T>(T);
+impl<T> Operator for NumRobot<T>
+where
+    T: Operator<Item = Dir>,
+{
+    type Item = Num;
+    fn cost_of_move(&self, &from: &Num, &to: &Num, path: &mut Vec<Dir>) -> usize {
+        let mut stack = Vec::new();
+        let mut distance = [(); 11].map(|()| (usize::MAX, Dir::A, vec![]));
+        stack.push((0, 0, from, Dir::A, vec![]));
+        while let Some((full_dist, dist, key, inner, path)) = stack.pop() {
+            if full_dist >= distance[key as usize].0 {
+                continue;
+            }
+            distance[key as usize].0 = full_dist;
+            distance[key as usize].1 = inner;
+            for (dir, next) in key.neighbors() {
+                let mut new_path = path.clone();
+                let move_cost = self.0.cost_of_move(&inner, &dir, &mut new_path);
+                let activate_cost = self.0.cost_of_move(&dir, &Dir::A, &mut vec![]);
+                stack.push((
+                    dist + move_cost + activate_cost,
+                    dist + move_cost,
+                    next,
+                    dir,
+                    new_path,
+                ));
+            }
+            distance[key as usize].2 = path;
+        }
+        let &(total_cost, last_inner, ref new_path) = &distance[usize::from(to)];
+        path.extend_from_slice(new_path);
+        self.0.cost_of_move(&last_inner, &Dir::A, path);
+        total_cost
     }
 }
 
@@ -155,6 +149,17 @@ impl Ord for State<'_> {
 pub fn part_2(input: &Input) -> usize {
     let _ = input;
     0
+}
+
+trait Keypad: Sized {
+    fn all() -> impl IntoIterator<Item = Self>;
+    fn move_finger(&self, dir: Dir) -> Option<Self>;
+
+    fn neighbors(&self) -> impl IntoIterator<Item = (Dir, Self)> {
+        Dir::all()
+            .into_iter()
+            .filter_map(|dir| Some((dir, self.move_finger(dir)?)))
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -172,8 +177,8 @@ enum Num {
     A,
 }
 
-impl Num {
-    pub const fn all() -> [Self; 11] {
+impl Keypad for Num {
+    fn all() -> impl IntoIterator<Item = Self> {
         [
             Self::Zero,
             Self::One,
@@ -189,38 +194,7 @@ impl Num {
         ]
     }
 
-    fn position(self) -> (u8, u8) {
-        // +---+---+---+
-        // | 7 | 8 | 9 |
-        // +---+---+---+
-        // | 4 | 5 | 6 |
-        // +---+---+---+
-        // | 1 | 2 | 3 |
-        // +---+---+---+
-        //     | 0 | A |
-        //     +---+---+
-        match self {
-            Self::Zero => (3, 1),
-            Self::One => (2, 0),
-            Self::Two => (2, 1),
-            Self::Three => (2, 2),
-            Self::Four => (1, 0),
-            Self::Five => (1, 1),
-            Self::Six => (1, 2),
-            Self::Seven => (0, 0),
-            Self::Eight => (0, 1),
-            Self::Nine => (0, 2),
-            Self::A => (3, 2),
-        }
-    }
-
-    fn dist(self, other: Self) -> u8 {
-        let (r1, c1) = self.position();
-        let (r2, c2) = other.position();
-        r1.abs_diff(r2) + c1.abs_diff(c2)
-    }
-
-    fn move_finger(self, dir: Dir) -> Option<Self> {
+    fn move_finger(&self, dir: Dir) -> Option<Self> {
         Some(match (self, dir) {
             (Self::Two, Dir::Down) | (Self::A, Dir::Left) => Self::Zero,
             (Self::Two, Dir::Left) | (Self::Four, Dir::Down) => Self::One,
@@ -296,52 +270,20 @@ enum Dir {
     A,
 }
 
-impl Dir {
-    pub const fn all() -> [Self; 5] {
+impl Keypad for Dir {
+    fn all() -> impl std::iter::IntoIterator<Item = Self> {
         [Self::Up, Self::Down, Self::Left, Self::Right, Self::A]
     }
 
-    pub const fn position(self) -> (u8, u8) {
-        //     +---+---+
-        //     | ^ | A |
-        // +---+---+---+
-        // | < | v | > |
-        // +---+---+---+
-        match self {
-            Self::Up => (0, 1),
-            Self::Down => (1, 1),
-            Self::Left => (1, 0),
-            Self::Right => (1, 2),
-            Self::A => (0, 2),
-        }
-    }
-
-    fn dist(self, other: Self) -> u8 {
-        let (r1, c1) = self.position();
-        let (r2, c2) = other.position();
-        r1.abs_diff(r2) + c1.abs_diff(c2)
-    }
-
-    pub fn neighbors(self) -> impl Iterator<Item = Self> {
-        let neighbors: [&[Self]; 5] = [
-            &[Self::Down, Self::A],
-            &[Self::Up, Self::Left, Self::Right],
-            &[Self::Down],
-            &[Self::Down, Self::A],
-            &[Self::Up, Self::Right],
-        ];
-        neighbors[usize::from(self)].iter().copied()
-    }
-
-    fn move_finger(self, dir: Dir) -> Option<Self> {
+    fn move_finger(&self, dir: Dir) -> Option<Self> {
         Some(match (self, dir) {
-            (Self::Down, Self::Up) | (Self::A, Self::Left) => Self::Up,
-            (Self::Up, Self::Down) | (Self::Left, Self::Right) | (Self::Right, Self::Left) => {
+            (Self::Down, Dir::Up) | (Self::A, Dir::Left) => Self::Up,
+            (Self::Up, Dir::Down) | (Self::Left, Dir::Right) | (Self::Right, Dir::Left) => {
                 Self::Down
             }
-            (Self::Down, Self::Left) => Self::Left,
-            (Self::Down, Self::Right) | (Self::A, Self::Down) => Self::Right,
-            (Self::Up, Self::Right) | (Self::Right, Self::Up) => Self::A,
+            (Self::Down, Dir::Left) => Self::Left,
+            (Self::Down, Dir::Right) | (Self::A, Dir::Down) => Self::Right,
+            (Self::Up, Dir::Right) | (Self::Right, Dir::Up) => Self::A,
             _ => None?,
         })
     }
