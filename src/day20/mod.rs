@@ -1,4 +1,3 @@
-use std::collections::HashSet;
 use std::fmt::Debug;
 use std::str::FromStr;
 use thiserror::Error;
@@ -13,29 +12,21 @@ pub fn run() {
 
     println!("++Example");
     let example = EXAMPLE.parse().expect("Parse example");
-    println!("|+-Part 1: {} (expected 44)", part_1(&example, 1));
-    println!("|'-Part 2: {} (expected 285)", part_2(&example, 50));
+    let (part1, part2) = part_1_and_2(&example, 1);
+    println!("|+-Part 1: {part1} (expected 44)");
+    println!("|'-Part 2: {part2} (expected 3_081)");
 
     println!("++Input");
     let input = INPUT.parse().expect("Parse input");
-    println!("|+-Part 1: {} (expected 1_395)", part_1(&input, 100));
-    println!("|'-Part 2: {} (expected 993_178)", part_2(&input, 100));
+    let (part1, part2) = part_1_and_2(&input, 100);
+    println!("|+-Part 1: {part1} (expected 1_395)");
+    println!("|'-Part 2: {part2} (expected 993_178)");
     println!("')");
 }
 
 #[must_use]
-pub fn part_1(input: &Input, least_saved: usize) -> usize {
-    count_cheats(input, 2, least_saved)
-}
-
-#[must_use]
-pub fn part_2(input: &Input, least_saved: usize) -> usize {
-    count_cheats(input, 20, least_saved)
-}
-
-#[must_use]
-pub fn count_cheats(input: &Input, max_skip: usize, least_saved: usize) -> usize {
-    let normal_path = dfs(
+pub fn part_1_and_2(input: &Input, least_saved: usize) -> (usize, usize) {
+    let normal_path = walk_path(
         input.start,
         |pos| {
             neighbors(pos, input).filter_map(|(x, y)| {
@@ -48,50 +39,44 @@ pub fn count_cheats(input: &Input, max_skip: usize, least_saved: usize) -> usize
             })
         },
         |pos| pos == input.end,
-    )
-    .unwrap();
-    let mut cheat_count = 0;
+    );
+    let mut cheat_count_short = 0;
+    let mut cheat_count_long = 0;
     for (i, &(x1, y1)) in normal_path.iter().enumerate() {
         for (skip, &(x2, y2)) in normal_path[i..].iter().enumerate() {
             let dist = x1.abs_diff(x2) + y1.abs_diff(y2);
             let saved = skip.saturating_sub(dist);
-            if dist <= max_skip && saved >= least_saved {
-                cheat_count += 1;
+            if saved >= least_saved && dist <= 20 {
+                cheat_count_long += 1;
+                if dist <= 2 {
+                    cheat_count_short += 1;
+                }
             }
         }
     }
-    cheat_count
+    (cheat_count_short, cheat_count_long)
 }
 
-fn dfs<P, N, NI, G>(start: P, neighbors: N, mut goal: G) -> Option<Vec<P>>
+fn walk_path<P, N, NI, G>(start: P, neighbors: N, mut goal: G) -> Vec<P>
 where
-    P: Copy + Debug + Eq + std::hash::Hash,
+    P: Copy + Eq,
     N: Fn(P) -> NI,
-    NI: Iterator<Item = P>,
+    NI: IntoIterator<Item = P>,
     G: FnMut(P) -> bool,
 {
-    let mut visited = HashSet::new();
-    let mut stack = vec![(start, false)];
-    let mut path = Vec::new();
-    while let Some((pos, backtracking)) = stack.pop() {
-        if backtracking {
-            visited.remove(&pos);
-            path.pop();
-            continue;
-        }
-        if !visited.insert(pos) {
-            continue;
-        }
-        path.push(pos);
-        if goal(pos) {
-            return Some(path);
-        }
-        stack.push((pos, true));
-        for pos in neighbors(pos) {
-            stack.push((pos, false));
-        }
+    // There is only a single path from start to goal
+    let mut path = vec![];
+    let mut node = start;
+    let mut prev = None;
+    while !goal(node) {
+        path.push(node);
+        (prev, node) = (Some(node), neighbors(node)
+            .into_iter()
+            .find(|&n| Some(n) != prev)
+            .unwrap());
     }
-    None
+    path.push(node);
+    path
 }
 
 fn neighbors((x, y): (usize, usize), input: &Input) -> impl Iterator<Item = (usize, usize)> + '_ {
