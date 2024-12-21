@@ -43,12 +43,12 @@ pub fn part_1_and_2(input: &Input, least_saved: usize) -> (usize, usize) {
     let mut cheat_count_short = 0;
     let mut cheat_count_long = 0;
     for (i, &(x1, y1)) in normal_path.iter().enumerate() {
-        for (skip, &(x2, y2)) in normal_path[i..].iter().enumerate() {
-            let dist = x1.abs_diff(x2) + y1.abs_diff(y2);
-            let saved = skip.saturating_sub(dist);
-            if saved >= least_saved && dist <= 20 {
+        for (skip_length, &(x2, y2)) in normal_path[i..].iter().enumerate() {
+            let jump_dist = x1.abs_diff(x2) + y1.abs_diff(y2);
+            let saved = skip_length.saturating_sub(jump_dist);
+            if saved >= least_saved && jump_dist <= 20 {
                 cheat_count_long += 1;
-                if dist <= 2 {
+                if jump_dist <= 2 {
                     cheat_count_short += 1;
                 }
             }
