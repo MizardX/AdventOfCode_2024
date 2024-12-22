@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::VecDeque;
 use std::str::FromStr;
 use thiserror::Error;
 
@@ -28,64 +28,59 @@ pub fn run() {
 pub fn part_1(input: &Input) -> u64 {
     let mut sum = 0;
     for &secret_number in &input.secret_numbers {
-        sum += generate(secret_number).nth(1_999).unwrap_or(0);
+        sum += PseduoRandom::new(secret_number).nth(1_999).unwrap_or(0);
     }
     sum
 }
 
-fn step(mut value: u64) -> u64 {
-    // mix(a,b) = a ^ b
-    // prune(x) = x & 0xFFFFFF
-    // x = prune(mix(x, x<<6))
-    // x = prune(mix(x, x>>5))
-    // x = prune(mix(x, x<<11))
-    value = ((value << 6) ^ value) & 0xFF_FFFF;
-    value = ((value >> 5) ^ value) & 0xFF_FFFF;
-    value = ((value << 11) ^ value) & 0xFF_FFFF;
-    value
-}
-
 #[must_use]
 pub fn part_2(input: &Input) -> u64 {
-    let mut scores = HashMap::<(i8, i8, i8, i8), u64>::new();
-    for &secret_number in &input.secret_numbers {
-        let new_scores = process_secret_number(secret_number);
-        update_scores(&mut scores, &new_scores);
+    let mut price_per_sequence = vec![(0, usize::MAX); 19 * 19 * 19 * 19].into_boxed_slice();
+    for (monkey, &secret_number) in input.secret_numbers.iter().enumerate() {
+        collect_price_fluctuations(monkey, secret_number, &mut price_per_sequence);
     }
-    scores.values().max().copied().unwrap_or(0)
+    price_per_sequence
+        .iter()
+        .map(|&(v, _)| v)
+        .max()
+        .unwrap_or(0)
 }
 
-fn process_secret_number(secret_number: u64) -> HashMap<(i8, i8, i8, i8), u64> {
+#[expect(clippy::cast_sign_loss, reason = "All values are between -9 and 9")]
+fn to_index(d1: i8, d2: i8, d3: i8, d4: i8) -> usize {
+    let d1 = (d1 + 9) as usize;
+    let d2 = (d2 + 9) as usize;
+    let d3 = (d3 + 9) as usize;
+    let d4 = (d4 + 9) as usize;
+    d1 * 19 * 19 * 19 + d2 * 19 * 19 + d3 * 19 + d4
+}
+
+fn collect_price_fluctuations(
+    monkey: usize,
+    secret_number: u64,
+    price_per_sequence: &mut [(u64, usize)],
+) {
     let mut diffs = VecDeque::new();
-    let mut new_scores = HashMap::<(i8, i8, i8, i8), u64>::new();
     let mut prev_price = (secret_number % 10) as u8;
 
     for value in PseduoRandom::new(secret_number).take(2_000) {
         let price = (value % 10) as u8;
-        let price_i8 = i8::try_from(price).expect("price is always < 10");
-        let prev_price_i8 = i8::try_from(prev_price).expect("prev_price is always < 10");
-        let diff = price_i8 - prev_price_i8;
+        #[expect(clippy::cast_possible_wrap)]
+        let diff = price.wrapping_sub(prev_price) as i8;
 
         diffs.push_back(diff);
 
         if diffs.len() == 4 {
-            let key = (diffs[0], diffs[1], diffs[2], diffs[3]);
+            let key = to_index(diffs[0], diffs[1], diffs[2], diffs[3]);
+            let (total, last_index) = &mut price_per_sequence[key];
+            if *last_index != monkey {
+                *last_index = monkey;
+                *total += u64::from(price);
+            }
             diffs.pop_front();
-            new_scores.entry(key).or_insert(u64::from(price));
         }
 
         prev_price = price;
-    }
-
-    new_scores
-}
-
-fn update_scores(
-    scores: &mut HashMap<(i8, i8, i8, i8), u64>,
-    new_scores: &HashMap<(i8, i8, i8, i8), u64>,
-) {
-    for (&key, &score) in new_scores {
-        *scores.entry(key).or_insert(0) += score;
     }
 }
 
@@ -117,10 +112,6 @@ impl Iterator for PseduoRandom {
         self.value = value;
         Some(self.value)
     }
-}
-
-fn generate(secret_number: u64) -> PseduoRandom {
-    PseduoRandom::new(secret_number)
 }
 
 #[derive(Debug, Clone)]
