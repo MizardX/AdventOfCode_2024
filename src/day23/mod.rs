@@ -40,7 +40,7 @@ pub fn part_1(input: &Input) -> usize {
                 if third_ix <= second_ix {
                     continue;
                 }
-                if first_node.neighbors.contains(&third_ix) {
+                if first_node.neighbors.binary_search(&third_ix).is_ok() {
                     let third_node = &input.nodes[third_ix];
                     let third_t = third_node.name.starts_with('t');
                     if first_t || second_t || third_t {
@@ -94,7 +94,8 @@ fn largest_connected_subgraph(
         if selected_nodes.iter().all(|&selected_node| {
             input.nodes[selected_node]
                 .neighbors
-                .contains(&candidate_node)
+                .binary_search(&candidate_node)
+                .is_ok()
         }) {
             selected_nodes.push(candidate_node);
             largest_connected_subgraph(remaining_candidates, selected_nodes, best_selection, input);
@@ -161,6 +162,9 @@ impl<'a> TryFrom<&'a str> for Input<'a> {
             };
             nodes[left_ix].neighbors.push(right_ix);
             nodes[right_ix].neighbors.push(left_ix);
+        }
+        for node in &mut nodes {
+            node.neighbors.sort_unstable();
         }
         Ok(Self { nodes })
     }
