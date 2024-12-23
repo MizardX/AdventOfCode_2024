@@ -89,21 +89,37 @@ fn largest_connected_subgraph(
     best_selection: &mut Vec<usize>,
     input: &Input,
 ) {
-    if let &[candidate_node, ref remaining_candidates @ ..] = candidates {
-        largest_connected_subgraph(remaining_candidates, selected_nodes, best_selection, input);
-        if selected_nodes.iter().all(|&selected_node| {
-            input.nodes[selected_node]
-                .neighbors
-                .binary_search(&candidate_node)
-                .is_ok()
-        }) {
-            selected_nodes.push(candidate_node);
-            largest_connected_subgraph(remaining_candidates, selected_nodes, best_selection, input);
-            selected_nodes.pop();
+    if candidates.is_empty() {
+        // Base case: no more candidates to consider
+        if selected_nodes.len() > best_selection.len() {
+            best_selection.clear();
+            best_selection.extend_from_slice(selected_nodes);
         }
-    } else if selected_nodes.len() > best_selection.len() {
-        best_selection.clear();
-        best_selection.extend_from_slice(selected_nodes);
+        return;
+    }
+
+    // Optimization: if we can't possibly beat the current best selection, return early
+    if selected_nodes.len() + candidates.len() < best_selection.len() {
+        return;
+    }
+
+    let candidate_node = candidates[0];
+    let remaining_candidates = &candidates[1..];
+
+    // Recurse without the candidate node
+    largest_connected_subgraph(remaining_candidates, selected_nodes, best_selection, input);
+
+    // If we can add the candidate node, recurse with it
+    if selected_nodes.iter().all(|&selected_node| {
+        input.nodes[selected_node]
+            .neighbors
+            .binary_search(&candidate_node)
+            .is_ok()
+    }) {
+        // Recurse with the candidate node
+        selected_nodes.push(candidate_node);
+        largest_connected_subgraph(remaining_candidates, selected_nodes, best_selection, input);
+        selected_nodes.pop();
     }
 }
 
