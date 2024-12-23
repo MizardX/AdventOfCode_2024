@@ -16,7 +16,10 @@ pub fn run() {
     println!("++Input");
     let input = INPUT.try_into().expect("Parse input");
     println!("|+-Part 1: {} (expected 1151)", part_1(&input));
-    println!("|'-Part 2: {} (expected ar,cd,hl,iw,jm,ku,qo,rz,vo,xe,xm,xv,ys)", part_2(&input));
+    println!(
+        "|'-Part 2: {} (expected ar,cd,hl,iw,jm,ku,qo,rz,vo,xe,xm,xv,ys)",
+        part_2(&input)
+    );
     println!("')");
 }
 
@@ -52,59 +55,54 @@ pub fn part_1(input: &Input) -> usize {
 
 #[must_use]
 pub fn part_2(input: &Input) -> String {
-    if let Some(selection) =
-        recursive_connected_subgraph(0, &mut vec![false; input.nodes.len()], input)
-    {
-        let mut names = Vec::new();
-        for (ix, &include) in selection.iter().enumerate() {
-            if include {
-                names.push(input.nodes[ix].name);
-            }
-        }
-        names.sort_unstable();
-        return names.join(",");
+    let mut best_selection = Vec::new();
+    let mut selected_nodes = Vec::new();
+
+    for start_node in 0..input.nodes.len() {
+        selected_nodes.clear();
+        selected_nodes.push(start_node);
+
+        let candidates = &input.nodes[start_node].neighbors;
+        largest_connected_subgraph(candidates, &mut selected_nodes, &mut best_selection, input);
     }
-    String::new()
+
+    let mut selected_names = best_selection
+        .iter()
+        .map(|&node| input.nodes[node].name)
+        .collect::<Vec<_>>();
+    selected_names.sort_unstable();
+
+    let mut res = String::with_capacity(3 * selected_names.len());
+    if !selected_names.is_empty() {
+        res.push_str(selected_names[0]);
+        for &name in &selected_names[1..] {
+            res.push(',');
+            res.push_str(name);
+        }
+    }
+    res
 }
 
-fn recursive_connected_subgraph(
-    node_ix: usize,
-    included_ixs: &mut [bool],
+fn largest_connected_subgraph(
+    candidates: &[usize],
+    selected_nodes: &mut Vec<usize>,
+    best_selection: &mut Vec<usize>,
     input: &Input,
-) -> Option<Vec<bool>> {
-    // Base case
-    if node_ix == included_ixs.len() {
-        return Some(included_ixs.to_vec());
-    }
-    // If all included nodes are connected to this one, try including it
-    let included = input
-        .nodes
-        .iter()
-        .enumerate()
-        .all(|(ix, node)| !included_ixs[ix] || node.neighbors.contains(&node_ix))
-        .then(|| {
-            included_ixs[node_ix] = true;
-            let res = recursive_connected_subgraph(node_ix + 1, included_ixs, input);
-            included_ixs[node_ix] = false;
-            res
-        })
-        .flatten();
-    // Also try excluding this node
-    let excluded = recursive_connected_subgraph(node_ix + 1, included_ixs, input);
-    // Pick the best result
-    match (included, excluded) {
-        (Some(included), Some(excluded)) => {
-            let included_count = included.iter().filter(|&&b| b).count();
-            let excluded_count = excluded.iter().filter(|&&b| b).count();
-            if included_count >= excluded_count {
-                Some(included)
-            } else {
-                Some(excluded)
-            }
+) {
+    if let &[candidate_node, ref remaining_candidates @ ..] = candidates {
+        largest_connected_subgraph(remaining_candidates, selected_nodes, best_selection, input);
+        if selected_nodes.iter().all(|&selected_node| {
+            input.nodes[selected_node]
+                .neighbors
+                .contains(&candidate_node)
+        }) {
+            selected_nodes.push(candidate_node);
+            largest_connected_subgraph(remaining_candidates, selected_nodes, best_selection, input);
+            selected_nodes.pop();
         }
-        (Some(included), None) => Some(included),
-        (None, Some(excluded)) => Some(excluded),
-        (None, None) => None,
+    } else if selected_nodes.len() > best_selection.len() {
+        best_selection.clear();
+        best_selection.extend_from_slice(selected_nodes);
     }
 }
 
