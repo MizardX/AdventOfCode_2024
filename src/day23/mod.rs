@@ -1,5 +1,4 @@
-use std::collections::hash_map::Entry;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use thiserror::Error;
 
 const EXAMPLE: &str = include_str!("example.txt");
@@ -53,6 +52,7 @@ pub fn part_1(input: &Input) -> usize {
     count_triples
 }
 
+/* Recursive solution with backtracking
 #[must_use]
 pub fn part_2(input: &Input) -> String {
     let mut best_selection = Vec::new();
@@ -109,7 +109,7 @@ fn largest_connected_subgraph(
     // Recurse without the candidate node
     largest_connected_subgraph(remaining_candidates, selected_nodes, best_selection, input);
 
-    // If we can add the candidate node, recurse with it
+    // If we can add the candidate node
     if selected_nodes.iter().all(|&selected_node| {
         input.nodes[selected_node]
             .neighbors
@@ -121,6 +121,60 @@ fn largest_connected_subgraph(
         largest_connected_subgraph(remaining_candidates, selected_nodes, best_selection, input);
         selected_nodes.pop();
     }
+}
+*/
+
+#[must_use]
+pub fn part_2(input: &Input) -> String {
+    fn bron_kerbosch1(
+        clique: &mut Vec<usize>,
+        mut candidates: &[usize],
+        mut excluded: HashSet<usize>,
+        max_clique: &mut HashSet<usize>,
+        input: &Input,
+    ) {
+        if candidates.is_empty() && excluded.is_empty() {
+            if clique.len() > max_clique.len() {
+                max_clique.clear();
+                max_clique.extend(clique.iter().copied());
+            }
+            return;
+        }
+
+        for &v in candidates {
+            let new_candidates = candidates
+                .iter()
+                .filter(|&&i| input.nodes[v].neighbors.contains(&i))
+                .copied()
+                .collect::<Vec<_>>();
+            let new_excluded = excluded
+                .iter()
+                .filter(|&&i| input.nodes[v].neighbors.contains(&i))
+                .copied()
+                .collect();
+            clique.push(v);
+            bron_kerbosch1(clique, &new_candidates, new_excluded, max_clique, input);
+            clique.pop();
+            candidates = &candidates[1..];
+            excluded.insert(v);
+        }
+    }
+    let mut largest_clique = HashSet::new();
+    let candidates = (0..input.nodes.len()).collect::<Vec<_>>();
+    let excluded = HashSet::new();
+    bron_kerbosch1(
+        &mut Vec::new(),
+        &candidates,
+        excluded,
+        &mut largest_clique,
+        input,
+    );
+    let mut sorted_clique = largest_clique
+        .into_iter()
+        .map(|i| input.nodes[i].name)
+        .collect::<Vec<_>>();
+    sorted_clique.sort_unstable();
+    sorted_clique.join(",")
 }
 
 #[derive(Debug, Clone)]
@@ -154,30 +208,24 @@ impl<'a> TryFrom<&'a str> for Input<'a> {
             let (left, right) = line
                 .split_once('-')
                 .ok_or(ParseInputError::MissingSeparator)?;
-            let left_ix = match index_lookup.entry(left) {
-                Entry::Occupied(entry) => *entry.get(),
-                Entry::Vacant(entry) => {
-                    let new_ix = nodes.len();
-                    nodes.push(Node {
-                        name: left,
-                        neighbors: Vec::new(),
-                    });
-                    *entry.insert(new_ix)
-                }
-            };
-            let right_ix = match index_lookup.entry(right) {
-                Entry::Occupied(entry) => *entry.get(),
-                Entry::Vacant(entry) => {
-                    let new_ix = nodes.len();
-                    nodes.push(Node {
-                        name: right,
-                        neighbors: Vec::new(),
-                    });
-                    *entry.insert(new_ix)
-                }
-            };
-            nodes[left_ix].neighbors.push(right_ix);
-            nodes[right_ix].neighbors.push(left_ix);
+            let left_node = *index_lookup.entry(left).or_insert_with(|| {
+                let new_ix = nodes.len();
+                nodes.push(Node {
+                    name: left,
+                    neighbors: Vec::new(),
+                });
+                new_ix
+            });
+            let right_node = *index_lookup.entry(right).or_insert_with(|| {
+                let new_ix = nodes.len();
+                nodes.push(Node {
+                    name: right,
+                    neighbors: Vec::new(),
+                });
+                new_ix
+            });
+            nodes[left_node].neighbors.push(right_node);
+            nodes[right_node].neighbors.push(left_node);
         }
         for node in &mut nodes {
             node.neighbors.sort_unstable();
