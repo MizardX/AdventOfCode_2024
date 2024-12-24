@@ -1,4 +1,3 @@
-use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use thiserror::Error;
 
@@ -149,35 +148,29 @@ impl<'a> TryFrom<&'a str> for Input<'a> {
 
     fn try_from(text: &'a str) -> Result<Self, Self::Error> {
         let mut nodes = Vec::new();
-        let mut index_lookup = HashMap::new();
+        let mut node_lookup = HashMap::new();
         for line in text.lines() {
-            let (left, right) = line
+            let (left_name, right_name) = line
                 .split_once('-')
                 .ok_or(ParseInputError::MissingSeparator)?;
-            let left_ix = match index_lookup.entry(left) {
-                Entry::Occupied(entry) => *entry.get(),
-                Entry::Vacant(entry) => {
-                    let new_ix = nodes.len();
-                    nodes.push(Node {
-                        name: left,
-                        neighbors: Vec::new(),
-                    });
-                    *entry.insert(new_ix)
-                }
-            };
-            let right_ix = match index_lookup.entry(right) {
-                Entry::Occupied(entry) => *entry.get(),
-                Entry::Vacant(entry) => {
-                    let new_ix = nodes.len();
-                    nodes.push(Node {
-                        name: right,
-                        neighbors: Vec::new(),
-                    });
-                    *entry.insert(new_ix)
-                }
-            };
-            nodes[left_ix].neighbors.push(right_ix);
-            nodes[right_ix].neighbors.push(left_ix);
+            let left_node = *node_lookup.entry(left_name).or_insert_with(|| {
+                let new_node = nodes.len();
+                nodes.push(Node {
+                    name: left_name,
+                    neighbors: Vec::new(),
+                });
+                new_node
+            });
+            let right_node = *node_lookup.entry(right_name).or_insert_with(|| {
+                let new_node = nodes.len();
+                nodes.push(Node {
+                    name: right_name,
+                    neighbors: Vec::new(),
+                });
+                new_node
+            });
+            nodes[left_node].neighbors.push(right_node);
+            nodes[right_node].neighbors.push(left_node);
         }
         for node in &mut nodes {
             node.neighbors.sort_unstable();
