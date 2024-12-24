@@ -282,7 +282,7 @@ impl<'a> TryFrom<&'a str> for Input<'a> {
         let mut lookup = HashMap::with_capacity(n);
         let mut lines = text.lines();
         parse_constants(&mut gates, &mut lookup, &mut lines)?;
-        parse_gates(&mut gates, lookup, lines)?;
+        parse_gates(&mut gates, &mut lookup, lines)?;
         let (input_gates1, input_gates2, output_gates) = extract_inputs_and_outputs(&gates);
 
         Ok(Input {
@@ -317,7 +317,7 @@ fn parse_constants<'a>(
 
 fn parse_gates<'a>(
     gates: &mut Vec<Gate<'a>>,
-    mut lookup: HashMap<&'a str, usize>,
+    lookup: &mut HashMap<&'a str, usize>,
     lines: std::str::Lines<'a>,
 ) -> Result<(), ParseInputError> {
     for line in lines {
@@ -325,66 +325,34 @@ fn parse_gates<'a>(
             .split_once(" -> ")
             .ok_or(ParseInputError::MissingDelimiter)?;
         let kind = if let Some((left, right)) = lhs.split_once(" AND ") {
-            let left_gate = *lookup.entry(left).or_insert_with(|| {
-                gates.push(Gate {
-                    name: left,
-                    kind: GateKind::None,
-                });
-                gates.len() - 1
-            });
-            let right_gate = *lookup.entry(right).or_insert_with(|| {
-                gates.push(Gate {
-                    name: right,
-                    kind: GateKind::None,
-                });
-                gates.len() - 1
-            });
+            let left_gate = get_or_add_gate(gates, lookup, left);
+            let right_gate = get_or_add_gate(gates, lookup, right);
             GateKind::And(left_gate, right_gate)
         } else if let Some((left, right)) = lhs.split_once(" OR ") {
-            let left_gate = *lookup.entry(left).or_insert_with(|| {
-                gates.push(Gate {
-                    name: left,
-                    kind: GateKind::None,
-                });
-                gates.len() - 1
-            });
-            let right_gate = *lookup.entry(right).or_insert_with(|| {
-                gates.push(Gate {
-                    name: right,
-                    kind: GateKind::None,
-                });
-                gates.len() - 1
-            });
+            let left_gate = get_or_add_gate(gates, lookup, left);
+            let right_gate = get_or_add_gate(gates, lookup, right);
             GateKind::Or(left_gate, right_gate)
         } else if let Some((left, right)) = lhs.split_once(" XOR ") {
-            let left_gate = *lookup.entry(left).or_insert_with(|| {
-                gates.push(Gate {
-                    name: left,
-                    kind: GateKind::None,
-                });
-                gates.len() - 1
-            });
-            let right_gate = *lookup.entry(right).or_insert_with(|| {
-                gates.push(Gate {
-                    name: right,
-                    kind: GateKind::None,
-                });
-                gates.len() - 1
-            });
+            let left_gate = get_or_add_gate(gates, lookup, left);
+            let right_gate = get_or_add_gate(gates, lookup, right);
             GateKind::Xor(left_gate, right_gate)
         } else {
             return Err(ParseInputError::SyntaxError);
         };
-        let gate = *lookup.entry(rhs).or_insert_with(|| {
-            gates.push(Gate {
-                name: rhs,
-                kind: GateKind::None,
-            });
-            gates.len() - 1
-        });
+        let gate = get_or_add_gate(gates, lookup, rhs);
         gates[gate].kind = kind;
     }
     Ok(())
+}
+
+fn get_or_add_gate<'a>(gates: &mut Vec<Gate<'a>>, lookup: &mut HashMap<&'a str, usize>, name: &'a str) -> usize {
+    *lookup.entry(name).or_insert_with(|| {
+        gates.push(Gate {
+            name,
+            kind: GateKind::None,
+        });
+        gates.len() - 1
+    })
 }
 
 fn extract_inputs_and_outputs(gates: &[Gate<'_>]) -> (Vec<usize>, Vec<usize>, Vec<usize>) {
