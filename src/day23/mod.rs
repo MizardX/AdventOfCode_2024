@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use thiserror::Error;
 
 const EXAMPLE: &str = include_str!("example.txt");
@@ -56,13 +56,21 @@ pub fn part_1(input: &Input) -> usize {
 pub fn part_2(input: &Input) -> String {
     let mut best_selection = Vec::new();
     let mut selected_nodes = Vec::new();
+    let mut exclude_nodes = HashSet::new();
 
     for start_node in 0..input.nodes.len() {
         selected_nodes.clear();
         selected_nodes.push(start_node);
 
         let candidates = &input.nodes[start_node].neighbors;
-        largest_connected_subgraph(candidates, &mut selected_nodes, &mut best_selection, input);
+        largest_connected_subgraph(
+            candidates,
+            &mut selected_nodes,
+            &exclude_nodes,
+            &mut best_selection,
+            input,
+        );
+        exclude_nodes.insert(start_node);
     }
 
     let mut selected_names = best_selection
@@ -85,6 +93,7 @@ pub fn part_2(input: &Input) -> String {
 fn largest_connected_subgraph(
     candidates: &[usize],
     selected_nodes: &mut Vec<usize>,
+    exclude_nodes: &HashSet<usize>,
     best_selection: &mut Vec<usize>,
     input: &Input,
 ) {
@@ -106,20 +115,39 @@ fn largest_connected_subgraph(
     let remaining_candidates = &candidates[1..];
 
     // Recurse without the candidate node
-    largest_connected_subgraph(remaining_candidates, selected_nodes, best_selection, input);
+    largest_connected_subgraph(
+        remaining_candidates,
+        selected_nodes,
+        exclude_nodes,
+        best_selection,
+        input,
+    );
 
-    // If we can add the candidate node, recurse with it
-    if selected_nodes.iter().all(|&selected_node| {
+    // Optimization: If the candidate node has been processed before, skip it
+    if exclude_nodes.contains(&candidate_node) {
+        return;
+    }
+
+    // If the candidate node is not connected to all selected nodes, skip it
+    if !selected_nodes.iter().all(|&selected_node| {
         input.nodes[selected_node]
             .neighbors
             .binary_search(&candidate_node)
             .is_ok()
     }) {
-        // Recurse with the candidate node
-        selected_nodes.push(candidate_node);
-        largest_connected_subgraph(remaining_candidates, selected_nodes, best_selection, input);
-        selected_nodes.pop();
+        return;
     }
+
+    // Recurse with the candidate node
+    selected_nodes.push(candidate_node);
+    largest_connected_subgraph(
+        remaining_candidates,
+        selected_nodes,
+        exclude_nodes,
+        best_selection,
+        input,
+    );
+    selected_nodes.pop();
 }
 
 #[derive(Debug, Clone)]
