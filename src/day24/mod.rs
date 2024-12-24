@@ -24,160 +24,182 @@ pub fn run() {
         "|+-Part 1: {} (expected 41_324_968_993_486)",
         part_1(&input)
     );
-    // println!(
-    //     "|'-Part 2: {} (expected bmn,jss,mvb,rds,wss,z08,z18,z23)",
-    //     part_2(&input)
-    // );
+    println!(
+        "|'-Part 2: {} (expected bmn,jss,mvb,rds,wss,z08,z18,z23)",
+        part_2(&input)
+    );
     println!("')");
 }
 
 #[must_use]
-pub fn part_1(input: &Input) -> usize {
+pub fn part_1(input: &Input) -> u64 {
     let n = input.gates.len();
     let mut values = vec![None; n];
+    run_circuit(&input.gates, &mut values);
+    extract_output(input, &values).unwrap()
+}
+
+fn run_circuit(gates: &[Gate<'_>], values: &mut [Option<bool>]) {
+    let n = gates.len();
     let mut waiting_on = vec![vec![]; n];
     let mut pending: VecDeque<_> = (0..n).collect();
     while let Some(index) = pending.pop_front() {
-        let gate = &input.gates[index];
-        match gate.kind.evaluate(&values) {
-            Ok(value) => values[index] = Some(value),
-            Err(other) => waiting_on[other].push(index),
-        }
-        for next in waiting_on[index].drain(..) {
-            pending.push_back(next);
-        }
-    }
-    let mut output = 0;
-    for (shift, &index) in input.output_gates.iter().enumerate() {
-        let value = values[index].expect("Missing output value");
-        output |= usize::from(value) << shift;
-    }
-    output
-}
-
-#[must_use]
-pub fn part_2(input: &Input) -> usize {
-    // Inputs: x(0) .. x(n-1), y(0) .. y(n-1)
-    // Outputs: z(0) .. z(n)
-    // Carry: c(1) .. c(n)
-    // A normal graph:
-    // - First layer has
-    //     x(0) XOR y(0) -> z(0)
-    //     x(0) AND y(0) -> c(1)
-    // - Middle layers has
-    //     x(i) XOR y(i) -> p(i)
-    //     x(i) AND y(i) -> q(i)
-    //     c(i) XOR p(i) -> z(i)
-    //     c(i) AND p(i) -> r(i)
-    //     q(i) OR r(i) -> c(i+1)
-    // - Last layer has
-    //     c(n) -> z(n)
-    // 1. Find p(i) and q(i) for all i
-    // 3. Find z(i) for all i
-    // 2. Find r(i) for all i
-    // 4. Find c(i+1) for all i
-    // 5. Find any gates that do not match the pattern
-    let mut lookup_gate: HashMap<GateKind, usize> = HashMap::new();
-    let mut lookup_binary: HashMap<(usize, usize), Vec<usize>> = HashMap::new();
-    let mut lookup_unary: HashMap<usize, Vec<usize>> = HashMap::new();
-    for (index, gate) in input.gates.iter().enumerate() {
-        lookup_gate.insert(gate.kind, index);
-        if let Some((lhs, rhs)) = gate.kind.as_binary() {
-            lookup_binary.entry((lhs, rhs)).or_default().push(index);
-            lookup_unary.entry(lhs).or_default().push(index);
-            lookup_unary.entry(rhs).or_default().push(index);
-        }
-        if let Some(flipped) = gate.kind.flip() {
-            lookup_gate.insert(flipped, index);
-            if let Some((lhs, rhs)) = flipped.as_binary() {
-                lookup_binary.entry((lhs, rhs)).or_default().push(index);
+        if values[index].is_none() {
+            let gate = &gates[index];
+            match gate.kind.evaluate(values) {
+                Ok(value) => {
+                    values[index] = Some(value);
+                    for next in waiting_on[index].drain(..) {
+                        pending.push_back(next);
+                    }
+                }
+                Err(other) => waiting_on[other].push(index),
             }
         }
     }
+}
 
-    let mut broken_gates = Vec::new();
+fn extract_output(input: &Input<'_>, values: &[Option<bool>]) -> Option<u64> {
+    let mut output = 0;
+    for (shift, &index) in input.output_gates.iter().enumerate() {
+        let value: bool = values[index]?;
+        output |= u64::from(value) << shift;
+    }
+    Some(output)
+}
 
-    let carry_below = input.output_gates.last().copied().unwrap();
-    for level in (1..input.output_gates.len() - 1).rev() {
-        let x = input.input_gates1[level];
-        let y = input.input_gates2[level];
-        let z = input.output_gates[level];
-        if input.gates[z].kind.is_xor() {
-            broken_gates.push(z);
+#[must_use]
+pub fn part_2(input: &Input) -> String {
+    let input_size = input.input_gates1.len();
+    let output_size = input.output_gates.len();
+    assert_eq!(input_size, input.input_gates2.len());
+    assert_eq!(output_size, input_size + 1);
+    let num_or_gates = input.gates.iter().filter(|gate| gate.kind.is_or()).count();
+    assert_eq!(num_or_gates, input_size - 1);
+    assert!(input.gates[*input.output_gates.last().unwrap()]
+        .kind
+        .is_or());
+    let mut gates = input.gates.clone();
+    let mut all_swaps = Vec::new();
+    println!("Brute forcing! Will take ~90 minutes...");
+    for _ in 0..4 {
+        let mut best_score = u32::MAX;
+        let mut best_swap = None;
+        for i in 0..input.gates.len() {
+            for j in i + 1..input.gates.len() {
+                gates.swap(i, j);
+                let score = evaluate_circuit(input, &gates);
+                if score < best_score {
+                    best_score = score;
+                    best_swap = Some((i, j));
+                }
+                gates.swap(i, j);
+            }
         }
-        // The carry-below should be an OR gate of q and r
-        // q should be an AND gate of x and y
-        // r should be an AND gate of p and carry-above
-        // p should be an XOR gate of x and y
-        // z should be an XOR gate of p and carry-above
-        // Otherwise add the gate to the broken gates.
-        // From below we have the carry-below and z. From above we have x and y.
-        let p_above = lookup_gate.get(&GateKind::Xor(x, y)).copied();
-        let _q_above = lookup_gate.get(&GateKind::And(x, y)).copied();
-        let (_r_above, _z_above) =
-            if let Some(below_p) = p_above.and_then(|p_above| lookup_unary.get(&p_above)) {
-                let r_above = below_p
-                    .iter()
-                    .find(|&&gate| input.gates[gate].kind.is_and())
-                    .copied();
-                let z_above = below_p
-                    .iter()
-                    .find(|&&gate| input.gates[gate].kind.is_xor())
-                    .copied();
-                (r_above, z_above)
-            } else {
-                (None, None)
+        gates.swap(best_swap.unwrap().0, best_swap.unwrap().1);
+        all_swaps.push(best_swap.unwrap());
+    }
+    let mut names = Vec::new();
+    for &(i, j) in all_swaps.iter().rev() {
+        names.push(input.gates[i].name);
+        names.push(input.gates[j].name);
+        gates.swap(i, j);
+    }
+    names.sort_unstable();
+    names.join(",")
+}
+
+fn evaluate_circuit(input: &Input, gates: &[Gate<'_>]) -> u32 {
+    let mut score = 0;
+    let mut values = vec![None; input.gates.len()];
+    for bit in 0..input.input_gates1.len() {
+        // x = 0, y = 1, carry = 0
+        for &(x, y, carry) in &[
+            (false, true, false),
+            (true, false, false),
+            (true, true, false),
+            (false, false, true),
+            (true, false, true),
+            (false, true, true),
+            (true, true, true),
+        ] {
+            if bit == 0 && carry {
+                continue;
+            }
+            let Some(s) = evaluate_case(input, gates, &mut values, bit, x, y, carry) else {
+                return u32::MAX;
             };
-        if !input.gates[carry_below].kind.is_or() {
-            broken_gates.push(carry_below);
-        }
-        if let Some(_p_and_r_below) = input.gates[carry_below].kind.as_binary() {
-            todo!()
+            score += s;
         }
     }
+    score
+}
 
-    0
+fn evaluate_case(
+    input: &Input<'_>,
+    gates: &[Gate<'_>],
+    values: &mut [Option<bool>],
+    bit: usize,
+    x: bool,
+    y: bool,
+    carry: bool,
+) -> Option<u32> {
+    for v in values.iter_mut() {
+        *v = None;
+    }
+    for i in 0..input.input_gates1.len() {
+        values[input.input_gates1[i]] = Some(x && (bit == i) || carry && (bit - 1 == i));
+        values[input.input_gates2[i]] = Some(y && (bit == i) || carry && (bit - 1 == i));
+    }
+    run_circuit(gates, values);
+    let output = extract_output(input, values)?;
+    let carry = u64::from(carry) << bit;
+    let x = u64::from(x) << bit;
+    let y = u64::from(y) << bit;
+    Some((output ^ (x + y + carry)).count_ones())
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum BinOp {
+    And,
+    Or,
+    Xor,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 enum GateKind {
     #[default]
     None,
-    And(usize, usize),
-    Or(usize, usize),
-    Xor(usize, usize),
+    Binary(BinOp, usize, usize),
     Constant(bool),
 }
 
 #[expect(dead_code)]
 impl GateKind {
     fn is_or(self) -> bool {
-        matches!(self, GateKind::Or(_, _))
+        matches!(self, GateKind::Binary(BinOp::Or, _, _))
     }
     fn is_and(self) -> bool {
-        matches!(self, GateKind::And(_, _))
+        matches!(self, GateKind::Binary(BinOp::And, _, _))
     }
     fn is_xor(self) -> bool {
-        matches!(self, GateKind::Xor(_, _))
+        matches!(self, GateKind::Binary(BinOp::Xor, _, _))
     }
     fn is_constant(self) -> bool {
         matches!(self, GateKind::Constant(_))
     }
 
     fn is_binary(self) -> bool {
-        matches!(
-            self,
-            GateKind::And(_, _) | GateKind::Or(_, _) | GateKind::Xor(_, _)
-        )
+        matches!(self, GateKind::Binary(_, _, _))
     }
+
     fn has_operand(self, operand: usize) -> bool {
         match self {
-            GateKind::And(lhs, rhs) | GateKind::Or(lhs, rhs) | GateKind::Xor(lhs, rhs) => {
-                lhs == operand || rhs == operand
-            }
+            GateKind::Binary(_, lhs, rhs) => lhs == operand || rhs == operand,
             _ => false,
         }
     }
+
     fn other_operand(self, first_operand: usize) -> Option<usize> {
         let (lhs, rhs) = self.as_binary()?;
         Some(if lhs == first_operand {
@@ -188,42 +210,41 @@ impl GateKind {
             None?
         })
     }
-    fn first(self) -> Option<usize> {
-        Some(self.as_binary()?.0)
+
+    fn children(self) -> Option<[usize; 2]> {
+        self.as_binary().map(|(a, b)| [a, b])
     }
-    fn second(self) -> Option<usize> {
-        Some(self.as_binary()?.1)
-    }
+
     fn as_binary(self) -> Option<(usize, usize)> {
         match self {
-            GateKind::And(lhs, rhs) | GateKind::Or(lhs, rhs) | GateKind::Xor(lhs, rhs) => Some((lhs, rhs)),
+            GateKind::Binary(_, lhs, rhs) => Some((lhs, rhs)),
             _ => None,
         }
     }
     fn as_and(self) -> Option<(usize, usize)> {
         match self {
-            GateKind::And(lhs, rhs) => Some((lhs, rhs)),
+            GateKind::Binary(BinOp::And, lhs, rhs) => Some((lhs, rhs)),
             _ => None,
         }
     }
     fn as_or(self) -> Option<(usize, usize)> {
         match self {
-            GateKind::Or(lhs, rhs) => Some((lhs, rhs)),
+            GateKind::Binary(BinOp::Or, lhs, rhs) => Some((lhs, rhs)),
             _ => None,
         }
     }
     fn as_xor(self) -> Option<(usize, usize)> {
         match self {
-            GateKind::Xor(lhs, rhs) => Some((lhs, rhs)),
+            GateKind::Binary(BinOp::Xor, lhs, rhs) => Some((lhs, rhs)),
             _ => None,
         }
     }
 
     fn flip(self) -> Option<Self> {
         Some(match self {
-            GateKind::And(lhs, rhs) => GateKind::Or(lhs, rhs),
-            GateKind::Or(lhs, rhs) => GateKind::And(lhs, rhs),
-            GateKind::Xor(lhs, rhs) => GateKind::Xor(lhs, rhs),
+            GateKind::Binary(BinOp::And, lhs, rhs) => GateKind::Binary(BinOp::Or, lhs, rhs),
+            GateKind::Binary(BinOp::Or, lhs, rhs) => GateKind::Binary(BinOp::And, lhs, rhs),
+            GateKind::Binary(BinOp::Xor, lhs, rhs) => GateKind::Binary(BinOp::Xor, lhs, rhs),
             _ => None?,
         })
     }
@@ -232,17 +253,17 @@ impl GateKind {
         Ok(match self {
             GateKind::None => unreachable!(),
             GateKind::Constant(value) => value,
-            GateKind::And(lhs, rhs) => {
+            GateKind::Binary(BinOp::And, lhs, rhs) => {
                 let lhs_value = inputs[lhs].ok_or(lhs)?;
                 let rhs_value = inputs[rhs].ok_or(rhs)?;
                 lhs_value && rhs_value
             }
-            GateKind::Or(lhs, rhs) => {
+            GateKind::Binary(BinOp::Or, lhs, rhs) => {
                 let lhs_value = inputs[lhs].ok_or(lhs)?;
                 let rhs_value = inputs[rhs].ok_or(rhs)?;
                 lhs_value || rhs_value
             }
-            GateKind::Xor(lhs, rhs) => {
+            GateKind::Binary(BinOp::Xor, lhs, rhs) => {
                 let lhs_value = inputs[lhs].ok_or(lhs)?;
                 let rhs_value = inputs[rhs].ok_or(rhs)?;
                 lhs_value ^ rhs_value
@@ -327,15 +348,15 @@ fn parse_gates<'a>(
         let kind = if let Some((left, right)) = lhs.split_once(" AND ") {
             let left_gate = get_or_add_gate(gates, lookup, left);
             let right_gate = get_or_add_gate(gates, lookup, right);
-            GateKind::And(left_gate, right_gate)
+            GateKind::Binary(BinOp::And, left_gate, right_gate)
         } else if let Some((left, right)) = lhs.split_once(" OR ") {
             let left_gate = get_or_add_gate(gates, lookup, left);
             let right_gate = get_or_add_gate(gates, lookup, right);
-            GateKind::Or(left_gate, right_gate)
+            GateKind::Binary(BinOp::Or, left_gate, right_gate)
         } else if let Some((left, right)) = lhs.split_once(" XOR ") {
             let left_gate = get_or_add_gate(gates, lookup, left);
             let right_gate = get_or_add_gate(gates, lookup, right);
-            GateKind::Xor(left_gate, right_gate)
+            GateKind::Binary(BinOp::Xor, left_gate, right_gate)
         } else {
             return Err(ParseInputError::SyntaxError);
         };
@@ -345,7 +366,11 @@ fn parse_gates<'a>(
     Ok(())
 }
 
-fn get_or_add_gate<'a>(gates: &mut Vec<Gate<'a>>, lookup: &mut HashMap<&'a str, usize>, name: &'a str) -> usize {
+fn get_or_add_gate<'a>(
+    gates: &mut Vec<Gate<'a>>,
+    lookup: &mut HashMap<&'a str, usize>,
+    name: &'a str,
+) -> usize {
     *lookup.entry(name).or_insert_with(|| {
         gates.push(Gate {
             name,
