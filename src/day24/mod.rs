@@ -70,93 +70,90 @@ fn extract_output(input: &Input<'_>, values: &[Option<bool>]) -> Option<u64> {
 
 #[must_use]
 pub fn part_2(input: &Input) -> String {
-    let input_size = input.input_gates1.len();
-    let output_size = input.output_gates.len();
-    assert_eq!(input_size, input.input_gates2.len());
-    assert_eq!(output_size, input_size + 1);
-    let num_or_gates = input.gates.iter().filter(|gate| gate.kind.is_or()).count();
-    assert_eq!(num_or_gates, input_size - 1);
-    assert!(input.gates[*input.output_gates.last().unwrap()]
-        .kind
-        .is_or());
-    let mut gates = input.gates.clone();
-    let mut all_swaps = Vec::new();
-    println!("Brute forcing! Will take ~90 minutes...");
-    for _ in 0..4 {
-        let mut best_score = u32::MAX;
-        let mut best_swap = None;
-        for i in 0..input.gates.len() {
-            for j in i + 1..input.gates.len() {
-                gates.swap(i, j);
-                let score = evaluate_circuit(input, &gates);
-                if score < best_score {
-                    best_score = score;
-                    best_swap = Some((i, j));
-                }
-                gates.swap(i, j);
+    let mut wrongs = Vec::new();
+
+    // The XOR directly connected to the input. The partial sum.
+    let mut input_adds = Vec::new();
+    // The AND directly connected to the input. A partial carry.
+    let mut input_carries = Vec::new();
+    // The XOR that is the output. The full sum.
+    let mut full_adds = Vec::new();
+    // The AND that is connected to the incoming carry. A partial carry, or "carry-carry".
+    let mut inner_carry = Vec::new();
+    // The OR that combines the full carries. The final carry.
+    let mut full_carries = Vec::new();
+
+    for (index, gate) in input.gates.iter().enumerate() {
+        if let GateKind::Binary(bin_op, lhs, rhs) = gate.kind {
+            let is_input = input.gates[lhs].kind.is_constant() || input.gates[rhs].kind.is_constant();
+            match (bin_op, is_input) {
+                (BinOp::And, true) => input_carries.push(index),
+                (BinOp::And, false) => inner_carry.push(index),
+                (BinOp::Or, true) => panic!("Inputs should not have been swapped to an OR gate"),
+                (BinOp::Or, false) => full_carries.push(index),
+                (BinOp::Xor, true) => input_adds.push(index),
+                (BinOp::Xor, false) => full_adds.push(index),
             }
         }
-        gates.swap(best_swap.unwrap().0, best_swap.unwrap().1);
-        all_swaps.push(best_swap.unwrap());
     }
-    let mut names = Vec::new();
-    for &(i, j) in all_swaps.iter().rev() {
-        names.push(input.gates[i].name);
-        names.push(input.gates[j].name);
-        gates.swap(i, j);
+
+    let first_input1 = input.input_gates1.first().copied().unwrap();
+    let last_output = input.output_gates.last().copied().unwrap();
+
+    // If the XOR gate either doesn't show up in other XOR operations, or is an output, then it is wrong.
+    for &gate in &input_adds {
+        let has_first_input_operand = input.gates[gate].kind.has_operand(first_input1);
+        let is_not_output_gate = !input.output_gates.contains(&gate);
+        let is_not_in_full_adds = full_adds.iter().all(|&a| !input.gates[a].kind.has_operand(gate));
+
+        if !has_first_input_operand && is_not_output_gate && is_not_in_full_adds {
+            wrongs.push(gate);
+        }
     }
+
+    // If the AND gate either doesn't show up in full carries, or is an output, then it is wrong.
+    for &gate in &input_carries {
+        let has_first_input_operand = input.gates[gate].kind.has_operand(first_input1);
+        let is_output_gate = input.output_gates.contains(&gate);
+        let is_not_in_full_carries = full_carries
+            .iter()
+            .all(|&a| !input.gates[a].kind.has_operand(gate));
+
+        if !has_first_input_operand && (is_output_gate || is_not_in_full_carries) {
+            wrongs.push(gate);
+        }
+    }
+
+    // If the XOR gate isn't an output, then it is wrong
+    for &gate in &full_adds {
+        let is_output_gate = input.output_gates.contains(&gate);
+        if !is_output_gate {
+            wrongs.push(gate);
+        }
+    }
+
+    // If the OR gate is an output, except for the last output, which doubles as a carry, then it is wrong.
+    for &gate in &full_carries {
+        let is_output_gate = input.output_gates.contains(&gate);
+        let is_last_output_gate = gate == last_output;
+        if is_output_gate && !is_last_output_gate {
+            wrongs.push(gate);
+        }
+    }
+
+    // If the AND gate is an output, then it is wrong.
+    for &gate in &inner_carry {
+        let is_output_gate = input.output_gates.contains(&gate);
+        if is_output_gate {
+            wrongs.push(gate);
+        }
+    }
+
+    assert_eq!(wrongs.len(), 8, "Expected 8 wrong gates that where missplaced, found {}", wrongs.len());
+
+    let mut names: Vec<_> = wrongs.into_iter().map(|s| input.gates[s].name).collect();
     names.sort_unstable();
     names.join(",")
-}
-
-fn evaluate_circuit(input: &Input, gates: &[Gate<'_>]) -> u32 {
-    let mut score = 0;
-    let mut values = vec![None; input.gates.len()];
-    for bit in 0..input.input_gates1.len() {
-        // x = 0, y = 1, carry = 0
-        for &(x, y, carry) in &[
-            (false, true, false),
-            (true, false, false),
-            (true, true, false),
-            (false, false, true),
-            (true, false, true),
-            (false, true, true),
-            (true, true, true),
-        ] {
-            if bit == 0 && carry {
-                continue;
-            }
-            let Some(s) = evaluate_case(input, gates, &mut values, bit, x, y, carry) else {
-                return u32::MAX;
-            };
-            score += s;
-        }
-    }
-    score
-}
-
-fn evaluate_case(
-    input: &Input<'_>,
-    gates: &[Gate<'_>],
-    values: &mut [Option<bool>],
-    bit: usize,
-    x: bool,
-    y: bool,
-    carry: bool,
-) -> Option<u32> {
-    for v in values.iter_mut() {
-        *v = None;
-    }
-    for i in 0..input.input_gates1.len() {
-        values[input.input_gates1[i]] = Some(x && (bit == i) || carry && (bit - 1 == i));
-        values[input.input_gates2[i]] = Some(y && (bit == i) || carry && (bit - 1 == i));
-    }
-    run_circuit(gates, values);
-    let output = extract_output(input, values)?;
-    let carry = u64::from(carry) << bit;
-    let x = u64::from(x) << bit;
-    let y = u64::from(y) << bit;
-    Some((output ^ (x + y + carry)).count_ones())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -279,6 +276,7 @@ struct Gate<'a> {
 }
 
 #[derive(Debug, Clone)]
+#[allow(unused)]
 pub struct Input<'a> {
     gates: Vec<Gate<'a>>,
     input_gates1: Vec<usize>,
