@@ -20,22 +20,22 @@ pub fn run() {
 #[must_use]
 pub fn part_1(input: &Input) -> usize {
     let mut count = 0;
-    let mut locks: Vec<[_; 5]> = Vec::new();
-    let mut keys: Vec<[_; 5]> = Vec::new();
+    let mut locks = Vec::new();
+    let mut keys = Vec::new();
     for &schematic in &input.schematics {
         match schematic {
             Schematic::Lock(lock) => {
                 locks.push(lock);
-                for key in &keys {
-                    if lock.iter().zip(key.iter()).all(|(l, k)| l + k < 6) {
+                for &key in &keys {
+                    if (key & lock) == 0 {
                         count += 1;
                     }
                 }
             }
             Schematic::Key(key) => {
                 keys.push(key);
-                for lock in &locks {
-                    if lock.iter().zip(key.iter()).all(|(l, k)| l + k < 6) {
+                for &lock in &locks {
+                    if (key & lock) == 0 {
                         count += 1;
                     }
                 }
@@ -47,8 +47,8 @@ pub fn part_1(input: &Input) -> usize {
 
 #[derive(Debug, Clone, Copy)]
 enum Schematic {
-    Lock([u8; 5]),
-    Key([u8; 5]),
+    Lock(u32),
+    Key(u32),
 }
 
 impl TryFrom<&[&str]> for Schematic {
@@ -64,12 +64,12 @@ impl TryFrom<&[&str]> for Schematic {
         }
         if value[0].bytes().all(|c| c == b'#') {
             // Lock, has downwards pointing pins
-            let mut lock = [0; 5];
-            for (row, line) in (0..).zip(value.iter()) {
+            let mut lock = 0;
+            for (row, &line) in (0..).zip(&value[1..6]) {
                 for (col, ch) in line.bytes().enumerate() {
                     match ch {
-                        b'#' if lock[col] < row => lock[col] = row,
-                        b'#' | b'.' => (),
+                        b'#' => lock |= 1 << (row * 5 + col),
+                        b'.' => (),
                         _ => return Err(ParseInputError::InvalidChar(ch as char)),
                     }
                 }
@@ -77,12 +77,12 @@ impl TryFrom<&[&str]> for Schematic {
             Ok(Schematic::Lock(lock))
         } else {
             // Key, has upwards pointing pins
-            let mut key = [0; 5];
-            for (row, line) in (0..).zip(value.iter().rev()) {
+            let mut key = 0;
+            for (row, &line) in (0..).zip(&value[1..6]) {
                 for (col, ch) in line.bytes().enumerate() {
                     match ch {
-                        b'#' if key[col] < row => key[col] = row,
-                        b'#' | b'.' => (),
+                        b'#' => key |= 1 << (row * 5 + col),
+                        b'.' => (),
                         _ => return Err(ParseInputError::InvalidChar(ch as char)),
                     }
                 }
