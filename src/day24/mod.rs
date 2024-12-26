@@ -43,8 +43,10 @@ fn run_circuit(gates: &[Gate<'_>], values: &mut [Option<bool>]) {
     let n = gates.len();
     let mut waiting_on = vec![vec![]; n];
     let mut pending: VecDeque<_> = (0..n).collect();
+    let mut queries = 0;
     while let Some(index) = pending.pop_front() {
         if values[index].is_none() {
+            queries += 1;
             let gate = &gates[index];
             match gate.kind.evaluate(values) {
                 Ok(value) => {
@@ -57,6 +59,7 @@ fn run_circuit(gates: &[Gate<'_>], values: &mut [Option<bool>]) {
             }
         }
     }
+    println!("Queries: {queries}");
 }
 
 fn extract_output(input: &Input<'_>, values: &[Option<bool>]) -> Option<u64> {

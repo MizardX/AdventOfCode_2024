@@ -1,9 +1,12 @@
+use std::cmp::Ordering;
+use std::collections::{BinaryHeap, HashMap};
 use std::hash::Hash;
 use std::str::FromStr;
+use std::vec;
 use thiserror::Error;
 
 const EXAMPLE: &str = include_str!("example.txt");
-const INPUT: &str = include_str!("input.txt");
+// const INPUT: &str = include_str!("input.txt");
 
 pub fn run() {
     println!(".Day 21");
@@ -13,19 +16,26 @@ pub fn run() {
     println!("|+-Part 1: {} (expected 126_384)", part_1(&example));
     println!("|'-Part 2: {} (expected XXX)", part_2(&example));
 
-    println!("++Input");
-    let input = INPUT.parse().expect("Parse input");
-    println!("|+-Part 1: {} (expected XXX)", part_1(&input));
-    println!("|'-Part 2: {} (expected XXX)", part_2(&input));
-    println!("')");
+    // println!("++Input");
+    // let input = INPUT.parse().expect("Parse input");
+    // println!("|+-Part 1: {} (expected XXX)", part_1(&input));
+    // println!("|'-Part 2: {} (expected XXX)", part_2(&input));
+    // println!("')");
 }
 
 #[must_use]
 pub fn part_1(input: &Input) -> usize {
     let mut sum = 0;
-    let operator_stack = NumRobot(DirRobot(DirRobot(Human)));
+    let operator_stack = NumRobot(DirRobot(DirRobot(Human))); //NumRobot(DirRobot(DirRobot(Human)));
     for code in &input.codes {
-        let (cost, path) = operator_stack.cost_of_full_code(code);
+        let mut prev = Num::A;
+        let mut full_path = Vec::new();
+        for &num in code {
+            let path = operator_stack.shortest_path(prev, num);
+            full_path.extend_from_slice(&path);
+            prev = num;
+        }
+        let cost = full_path.len();
         let num = code.iter().fold(0, |acc, &num| {
             acc * 10
                 + match num {
@@ -42,32 +52,69 @@ pub fn part_1(input: &Input) -> usize {
                     Num::A => return acc,
                 }
         });
-        println!("code {code:?} cost {cost} num {num} path {path:?}");
+        println!("code {code:?} cost {cost} num {num} path {full_path:?}");
         sum += cost * num;
     }
     sum
 }
 
-trait Operator {
-    type Item;
-    fn cost_of_move(&self, from: &Self::Item, to: &Self::Item, path: &mut Vec<Dir>) -> usize;
-
-    fn cost_of_full_code(&self, code: &[Self::Item]) -> (usize, Vec<Dir>) {
-        let mut path = Vec::new();
-        let total_cost = code
-            .windows(2)
-            .map(|pair| self.cost_of_move(&pair[0], &pair[1], &mut path))
-            .sum();
-        (total_cost, path)
+#[derive(Debug, Clone)]
+struct PathNode<T> {
+    cost: usize,
+    position: T,
+    inner: Dir,
+    path: Vec<Dir>,
+}
+impl<T> PathNode<T> {
+    fn new(cost: usize, position: T, inner: Dir) -> Self {
+        Self {
+            cost,
+            position,
+            inner,
+            path: Vec::new(),
+        }
     }
+
+    fn create_next(&self, position: T, more_path: &[Dir]) -> Self {
+        let mut path = self.path.clone();
+        path.extend_from_slice(more_path);
+        let inner = more_path.last().copied().unwrap_or(self.inner);
+        Self {
+            cost: self.cost + more_path.len(),
+            position,
+            inner,
+            path,
+        }
+    }
+}
+impl<T> PartialEq for PathNode<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.cost == other.cost
+    }
+}
+impl<T> Eq for PathNode<T> {}
+impl<T> Ord for PathNode<T> {
+    fn cmp(&self, other: &Self) -> Ordering {
+        other.cost.cmp(&self.cost)
+    }
+}
+impl<T> PartialOrd for PathNode<T> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+trait Operator {
+    type Item: Copy;
+
+    fn shortest_path(&self, from: Self::Item, to: Self::Item) -> Vec<Dir>;
 }
 
 struct Human;
 impl Operator for Human {
     type Item = Dir;
-    fn cost_of_move(&self, _from: &Dir, &to: &Dir, path: &mut Vec<Dir>) -> usize {
-        path.push(to);
-        1
+    fn shortest_path(&self, _from: Self::Item, to: Self::Item) -> Vec<Dir> {
+        vec![to]
     }
 }
 
@@ -77,34 +124,38 @@ where
     T: Operator<Item = Dir>,
 {
     type Item = Dir;
-    fn cost_of_move(&self, &from: &Dir, &to: &Dir, path: &mut Vec<Dir>) -> usize {
-        let mut stack = Vec::new();
-        let mut distance = [(); 5].map(|()| (usize::MAX, Dir::A, vec![]));
-        stack.push((0, 0, from, Dir::A, vec![]));
-        while let Some((full_dist, dist, key, inner, path)) = stack.pop() {
-            if full_dist >= distance[key as usize].0 {
+    fn shortest_path(&self, from: Self::Item, to: Self::Item) -> Vec<Dir> {
+        let mut shortest_path = Vec::new();
+        let mut stack = BinaryHeap::new();
+        stack.push(PathNode::new(0, from, Dir::A));
+        let mut seen = HashMap::new();
+        while let Some(node) = stack.pop() {
+            if let Some(&cost) = seen.get(&(node.position, node.inner)) {
+                if node.cost >= cost {
+                    continue;
+                }
+            }
+            seen.insert((node.position, node.inner), node.cost);
+            if !shortest_path.is_empty() && node.path.len() >= shortest_path.len() {
                 continue;
             }
-            distance[key as usize].0 = full_dist;
-            distance[key as usize].1 = inner;
-            for (dir, next) in key.neighbors() {
-                let mut new_path = path.clone();
-                let move_cost = self.0.cost_of_move(&inner, &dir, &mut new_path);
-                let activate_cost = self.0.cost_of_move(&dir, &Dir::A, &mut vec![]);
-                stack.push((
-                    dist + move_cost + activate_cost,
-                    dist + move_cost,
-                    next,
-                    dir,
-                    new_path,
-                ));
+            if node.position == to {
+                let new_node = node.create_next(to, &self.0.shortest_path(node.inner, Dir::A));
+                if shortest_path.is_empty() || new_node.path.len() < shortest_path.len() {
+                    shortest_path = new_node.path;
+                }
+                continue;
             }
-            distance[key as usize].2 = path;
+            for (dir, next) in node.position.neighbors() {
+                let new_node = node.create_next(next, &self.0.shortest_path(node.inner, dir));
+                stack.push(new_node);
+            }
         }
-        let &(total_cost, last_inner, ref new_path) = &distance[usize::from(to)];
-        path.extend_from_slice(new_path);
-        self.0.cost_of_move(&last_inner, &Dir::A, path);
-        total_cost
+        assert!(
+            !shortest_path.is_empty(),
+            "No path found from {from:?} to {to:?}"
+        );
+        shortest_path
     }
 }
 
@@ -114,34 +165,53 @@ where
     T: Operator<Item = Dir>,
 {
     type Item = Num;
-    fn cost_of_move(&self, &from: &Num, &to: &Num, path: &mut Vec<Dir>) -> usize {
-        let mut stack = Vec::new();
-        let mut distance = [(); 11].map(|()| (usize::MAX, Dir::A, vec![]));
-        stack.push((0, 0, from, Dir::A, vec![]));
-        while let Some((full_dist, dist, key, inner, path)) = stack.pop() {
-            if full_dist >= distance[key as usize].0 {
+    fn shortest_path(&self, from: Self::Item, to: Self::Item) -> Vec<Dir> {
+        let mut shortest_path = Vec::new();
+        let mut stack = BinaryHeap::new();
+        stack.push(PathNode::new(0, from, Dir::A));
+        let mut seen = HashMap::new();
+        while let Some(node) = stack.pop() {
+            if let Some(&cost) = seen.get(&(node.position, node.inner)) {
+                if node.cost >= cost {
+                    continue;
+                }
+            }
+            seen.insert((node.position, node.inner), node.cost);
+            if !shortest_path.is_empty() && node.path.len() >= shortest_path.len() {
                 continue;
             }
-            distance[key as usize].0 = full_dist;
-            distance[key as usize].1 = inner;
-            for (dir, next) in key.neighbors() {
-                let mut new_path = path.clone();
-                let move_cost = self.0.cost_of_move(&inner, &dir, &mut new_path);
-                let activate_cost = self.0.cost_of_move(&dir, &Dir::A, &mut vec![]);
-                stack.push((
-                    dist + move_cost + activate_cost,
-                    dist + move_cost,
-                    next,
-                    dir,
-                    new_path,
-                ));
+            if node.position == to {
+                let new_node = node.create_next(to, &self.0.shortest_path(node.inner, Dir::A));
+                if shortest_path.is_empty() || new_node.path.len() < shortest_path.len() {
+                    shortest_path = new_node.path;
+                }
+                continue;
             }
-            distance[key as usize].2 = path;
+            for (dir, next) in node.position.neighbors() {
+                match dir {
+                    Dir::Up if to.position().1 > node.position.position().1 => {
+                        continue;
+                    }
+                    Dir::Down if to.position().1 < node.position.position().1 => {
+                        continue;
+                    }
+                    Dir::Left if to.position().0 > node.position.position().0 => {
+                        continue;
+                    }
+                    Dir::Right if to.position().0 < node.position.position().0 => {
+                        continue;
+                    }
+                    _ => (),
+                }
+                let new_node = node.create_next(next, &self.0.shortest_path(node.inner, dir));
+                stack.push(new_node);
+            }
         }
-        let &(total_cost, last_inner, ref new_path) = &distance[usize::from(to)];
-        path.extend_from_slice(new_path);
-        self.0.cost_of_move(&last_inner, &Dir::A, path);
-        total_cost
+        assert!(
+            !shortest_path.is_empty(),
+            "No path found from {from:?} to {to:?}"
+        );
+        shortest_path
     }
 }
 
@@ -154,6 +224,7 @@ pub fn part_2(input: &Input) -> usize {
 trait Keypad: Sized {
     fn all() -> impl IntoIterator<Item = Self>;
     fn move_finger(&self, dir: Dir) -> Option<Self>;
+    fn position(self) -> (usize, usize);
 
     fn neighbors(&self) -> impl IntoIterator<Item = (Dir, Self)> {
         Dir::all()
@@ -192,6 +263,25 @@ impl Keypad for Num {
             Self::Nine,
             Self::A,
         ]
+    }
+
+    fn position(self) -> (usize, usize) {
+        match self {
+            Self::Zero => (1, 3),
+            Self::A => (2, 3),
+
+            Self::One => (0, 2),
+            Self::Two => (1, 2),
+            Self::Three => (2, 2),
+
+            Self::Four => (0, 1),
+            Self::Five => (1, 1),
+            Self::Six => (2, 1),
+
+            Self::Seven => (0, 0),
+            Self::Eight => (1, 0),
+            Self::Nine => (2, 0),
+        }
     }
 
     fn move_finger(&self, dir: Dir) -> Option<Self> {
@@ -273,6 +363,16 @@ enum Dir {
 impl Keypad for Dir {
     fn all() -> impl std::iter::IntoIterator<Item = Self> {
         [Self::Up, Self::Down, Self::Left, Self::Right, Self::A]
+    }
+
+    fn position(self) -> (usize, usize) {
+        match self {
+            Self::Up => (1, 0),
+            Self::Down => (1, 1),
+            Self::Left => (0, 1),
+            Self::Right => (2, 1),
+            Self::A => (2, 0),
+        }
     }
 
     fn move_finger(&self, dir: Dir) -> Option<Self> {
