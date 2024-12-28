@@ -1,6 +1,6 @@
+use std::collections::HashMap;
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
-use std::marker::PhantomData;
 use std::str::FromStr;
 use std::vec;
 use thiserror::Error;
@@ -14,21 +14,47 @@ pub fn run() {
     println!("++Example");
     let example = EXAMPLE.parse().expect("Parse example");
     println!("|+-Part 1: {} (expected 126_384)", part_1(&example));
-    println!("|'-Part 2: {} (expected XXX)", part_2(&example));
+    println!(
+        "|'-Part 2: {} (expected 154_115_708_116_294)",
+        part_2(&example)
+    );
 
     println!("++Input");
     let input = INPUT.parse().expect("Parse input");
     println!("|+-Part 1: {} (expected 132_532)", part_1(&input));
-    println!("|'-Part 2: {} (expected XXX)", part_2(&input));
+    println!(
+        "|'-Part 2: {} (expected 165_644_591_859_332)",
+        part_2(&input)
+    );
     println!("')");
 }
 
 #[must_use]
 pub fn part_1(input: &Input) -> usize {
-    let mut sum = 0;
     let operator_stack = NumRobot::new(DirRobot::new(DirRobot::new(Human))); //NumRobot(DirRobot(DirRobot(Human)));
+    solve(input, operator_stack)
+}
+
+#[must_use]
+pub fn part_2(input: &Input) -> usize {
+    let operator_stack = NumRobot::new(DirRobot::new(DirRobot::new(DirRobot::new(DirRobot::new(
+        DirRobot::new(DirRobot::new(DirRobot::new(DirRobot::new(DirRobot::new(
+            DirRobot::new(DirRobot::new(DirRobot::new(DirRobot::new(DirRobot::new(
+                DirRobot::new(DirRobot::new(DirRobot::new(DirRobot::new(DirRobot::new(
+                    DirRobot::new(DirRobot::new(DirRobot::new(DirRobot::new(DirRobot::new(
+                        DirRobot::new(Human),
+                    ))))),
+                ))))),
+            ))))),
+        ))))),
+    )))));
+    solve(input, operator_stack)
+}
+
+fn solve(input: &Input, mut operator_stack: impl Operator<Item = Num>) -> usize {
+    let mut sum = 0;
     for code in &input.codes {
-        let mut prev = Num::A;
+        let mut prev = Num::START;
         let mut full_cost = 0;
         for &num in code {
             let shortest_code = operator_stack.shortest_code(prev, num).unwrap();
@@ -87,14 +113,14 @@ impl Display for Path {
 trait Operator {
     type Item: Copy + Keypad;
 
-    fn shortest_code(&self, from: Self::Item, to: Self::Item) -> Option<usize>;
+    fn shortest_code(&mut self, from: Self::Item, to: Self::Item) -> Option<usize>;
 }
 
 #[derive(Debug, Clone)]
 struct Human;
 impl Operator for Human {
     type Item = Dir;
-    fn shortest_code(&self, _from: Self::Item, _to: Self::Item) -> Option<usize> {
+    fn shortest_code(&mut self, _from: Self::Item, _to: Self::Item) -> Option<usize> {
         Some(1)
     }
 }
@@ -105,13 +131,13 @@ type NumRobot<T> = Robot<Num, T>;
 #[derive(Clone)]
 struct Robot<K, T> {
     inner: T,
-    _marker: PhantomData<K>,
+    cache: HashMap<(K, K), Option<usize>>,
 }
 impl<K, T> Robot<K, T> {
     fn new(inner: T) -> Self {
         Self {
             inner,
-            _marker: PhantomData,
+            cache: HashMap::new(),
         }
     }
 }
@@ -126,11 +152,14 @@ where
     K: Keypad + Copy + Eq + Hash + Debug,
 {
     type Item = K;
-    fn shortest_code(&self, from: Self::Item, to: Self::Item) -> Option<usize> {
+    fn shortest_code(&mut self, from: Self::Item, to: Self::Item) -> Option<usize> {
+        if let Some(&shortest_code) = self.cache.get(&(from, to)) {
+            return shortest_code;
+        }
         let paths = K::all_paths(from, to);
         let mut stack = paths
             .iter()
-            .map(|path| (Dir::A, path.0.as_slice(), 0))
+            .map(|path| (Dir::START, path.0.as_slice(), 0))
             .collect::<Vec<_>>();
         let mut shortest_code = None;
         while let Some((prev, path, current_len)) = stack.pop() {
@@ -147,14 +176,9 @@ where
                 }
             }
         }
+        self.cache.insert((from, to), shortest_code);
         shortest_code
     }
-}
-
-#[must_use]
-pub fn part_2(input: &Input) -> usize {
-    let _ = input;
-    0
 }
 
 trait Keypad: Sized + Copy + Eq + Debug {
@@ -179,7 +203,7 @@ trait Keypad: Sized + Copy + Eq + Debug {
                 continue;
             }
             if pos == to {
-                path.push(Dir::A);
+                path.push(Dir::START);
                 if all_paths.first().is_some_and(|f| f.len() > path.len()) {
                     all_paths.clear();
                 }
