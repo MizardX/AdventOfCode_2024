@@ -1,12 +1,12 @@
-use std::cmp::Ordering;
-use std::collections::{BinaryHeap, HashMap};
+use std::fmt::{Debug, Display};
 use std::hash::Hash;
+use std::marker::PhantomData;
 use std::str::FromStr;
 use std::vec;
 use thiserror::Error;
 
 const EXAMPLE: &str = include_str!("example.txt");
-// const INPUT: &str = include_str!("input.txt");
+const INPUT: &str = include_str!("input.txt");
 
 pub fn run() {
     println!(".Day 21");
@@ -16,26 +16,25 @@ pub fn run() {
     println!("|+-Part 1: {} (expected 126_384)", part_1(&example));
     println!("|'-Part 2: {} (expected XXX)", part_2(&example));
 
-    // println!("++Input");
-    // let input = INPUT.parse().expect("Parse input");
-    // println!("|+-Part 1: {} (expected XXX)", part_1(&input));
-    // println!("|'-Part 2: {} (expected XXX)", part_2(&input));
-    // println!("')");
+    println!("++Input");
+    let input = INPUT.parse().expect("Parse input");
+    println!("|+-Part 1: {} (expected 132_532)", part_1(&input));
+    println!("|'-Part 2: {} (expected XXX)", part_2(&input));
+    println!("')");
 }
 
 #[must_use]
 pub fn part_1(input: &Input) -> usize {
     let mut sum = 0;
-    let operator_stack = NumRobot(DirRobot(DirRobot(Human))); //NumRobot(DirRobot(DirRobot(Human)));
+    let operator_stack = NumRobot::new(DirRobot::new(DirRobot::new(Human))); //NumRobot(DirRobot(DirRobot(Human)));
     for code in &input.codes {
         let mut prev = Num::A;
-        let mut full_path = Vec::new();
+        let mut full_cost = 0;
         for &num in code {
-            let path = operator_stack.shortest_path(prev, num);
-            full_path.extend_from_slice(&path);
+            let shortest_code = operator_stack.shortest_code(prev, num).unwrap();
+            full_cost += shortest_code;
             prev = num;
         }
-        let cost = full_path.len();
         let num = code.iter().fold(0, |acc, &num| {
             acc * 10
                 + match num {
@@ -52,166 +51,103 @@ pub fn part_1(input: &Input) -> usize {
                     Num::A => return acc,
                 }
         });
-        println!("code {code:?} cost {cost} num {num} path {full_path:?}");
-        sum += cost * num;
+        sum += full_cost * num;
     }
     sum
 }
 
 #[derive(Debug, Clone)]
-struct PathNode<T> {
-    cost: usize,
-    position: T,
-    inner: Dir,
-    path: Vec<Dir>,
+struct Path(Vec<Dir>);
+impl Path {
+    fn new() -> Self {
+        Self(Vec::new())
+    }
+    fn push(&mut self, dir: Dir) {
+        self.0.push(dir);
+    }
+    fn len(&self) -> usize {
+        self.0.len()
+    }
 }
-impl<T> PathNode<T> {
-    fn new(cost: usize, position: T, inner: Dir) -> Self {
-        Self {
-            cost,
-            position,
-            inner,
-            path: Vec::new(),
+impl Display for Path {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for dir in &self.0 {
+            match dir {
+                Dir::Up => write!(f, "^")?,
+                Dir::Down => write!(f, "v")?,
+                Dir::Left => write!(f, "<")?,
+                Dir::Right => write!(f, ">")?,
+                Dir::A => write!(f, "A")?,
+            }
         }
-    }
-
-    fn create_next(&self, position: T, more_path: &[Dir]) -> Self {
-        let mut path = self.path.clone();
-        path.extend_from_slice(more_path);
-        let inner = more_path.last().copied().unwrap_or(self.inner);
-        Self {
-            cost: self.cost + more_path.len(),
-            position,
-            inner,
-            path,
-        }
-    }
-}
-impl<T> PartialEq for PathNode<T> {
-    fn eq(&self, other: &Self) -> bool {
-        self.cost == other.cost
-    }
-}
-impl<T> Eq for PathNode<T> {}
-impl<T> Ord for PathNode<T> {
-    fn cmp(&self, other: &Self) -> Ordering {
-        other.cost.cmp(&self.cost)
-    }
-}
-impl<T> PartialOrd for PathNode<T> {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
+        Ok(())
     }
 }
 
 trait Operator {
-    type Item: Copy;
+    type Item: Copy + Keypad;
 
-    fn shortest_path(&self, from: Self::Item, to: Self::Item) -> Vec<Dir>;
+    fn shortest_code(&self, from: Self::Item, to: Self::Item) -> Option<usize>;
 }
 
+#[derive(Debug, Clone)]
 struct Human;
 impl Operator for Human {
     type Item = Dir;
-    fn shortest_path(&self, _from: Self::Item, to: Self::Item) -> Vec<Dir> {
-        vec![to]
+    fn shortest_code(&self, _from: Self::Item, _to: Self::Item) -> Option<usize> {
+        Some(1)
     }
 }
 
-struct DirRobot<T>(T);
-impl<T> Operator for DirRobot<T>
-where
-    T: Operator<Item = Dir>,
-{
-    type Item = Dir;
-    fn shortest_path(&self, from: Self::Item, to: Self::Item) -> Vec<Dir> {
-        let mut shortest_path = Vec::new();
-        let mut stack = BinaryHeap::new();
-        stack.push(PathNode::new(0, from, Dir::A));
-        let mut seen = HashMap::new();
-        while let Some(node) = stack.pop() {
-            if let Some(&cost) = seen.get(&(node.position, node.inner)) {
-                if node.cost >= cost {
-                    continue;
-                }
-            }
-            seen.insert((node.position, node.inner), node.cost);
-            if !shortest_path.is_empty() && node.path.len() >= shortest_path.len() {
-                continue;
-            }
-            if node.position == to {
-                let new_node = node.create_next(to, &self.0.shortest_path(node.inner, Dir::A));
-                if shortest_path.is_empty() || new_node.path.len() < shortest_path.len() {
-                    shortest_path = new_node.path;
-                }
-                continue;
-            }
-            for (dir, next) in node.position.neighbors() {
-                let new_node = node.create_next(next, &self.0.shortest_path(node.inner, dir));
-                stack.push(new_node);
-            }
+type DirRobot<T> = Robot<Dir, T>;
+type NumRobot<T> = Robot<Num, T>;
+
+#[derive(Clone)]
+struct Robot<K, T> {
+    inner: T,
+    _marker: PhantomData<K>,
+}
+impl<K, T> Robot<K, T> {
+    fn new(inner: T) -> Self {
+        Self {
+            inner,
+            _marker: PhantomData,
         }
-        assert!(
-            !shortest_path.is_empty(),
-            "No path found from {from:?} to {to:?}"
-        );
-        shortest_path
     }
 }
-
-struct NumRobot<T>(T);
-impl<T> Operator for NumRobot<T>
+impl<K: Keypad, T: Debug> Debug for Robot<K, T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Robot<{}>({:?})", K::NAME, self.inner)
+    }
+}
+impl<K, T> Operator for Robot<K, T>
 where
-    T: Operator<Item = Dir>,
+    T: Operator<Item = Dir> + Debug,
+    K: Keypad + Copy + Eq + Hash + Debug,
 {
-    type Item = Num;
-    fn shortest_path(&self, from: Self::Item, to: Self::Item) -> Vec<Dir> {
-        let mut shortest_path = Vec::new();
-        let mut stack = BinaryHeap::new();
-        stack.push(PathNode::new(0, from, Dir::A));
-        let mut seen = HashMap::new();
-        while let Some(node) = stack.pop() {
-            if let Some(&cost) = seen.get(&(node.position, node.inner)) {
-                if node.cost >= cost {
-                    continue;
+    type Item = K;
+    fn shortest_code(&self, from: Self::Item, to: Self::Item) -> Option<usize> {
+        let paths = K::all_paths(from, to);
+        let mut stack = paths
+            .iter()
+            .map(|path| (Dir::A, path.0.as_slice(), 0))
+            .collect::<Vec<_>>();
+        let mut shortest_code = None;
+        while let Some((prev, path, current_len)) = stack.pop() {
+            match path {
+                [] => {
+                    if shortest_code.is_none_or(|len| len > current_len) {
+                        shortest_code = Some(current_len);
+                    }
                 }
-            }
-            seen.insert((node.position, node.inner), node.cost);
-            if !shortest_path.is_empty() && node.path.len() >= shortest_path.len() {
-                continue;
-            }
-            if node.position == to {
-                let new_node = node.create_next(to, &self.0.shortest_path(node.inner, Dir::A));
-                if shortest_path.is_empty() || new_node.path.len() < shortest_path.len() {
-                    shortest_path = new_node.path;
+                &[next, ref rest @ ..] => {
+                    if let Some(step_len) = self.inner.shortest_code(prev, next) {
+                        stack.push((next, rest, current_len + step_len));
+                    }
                 }
-                continue;
-            }
-            for (dir, next) in node.position.neighbors() {
-                match dir {
-                    Dir::Up if to.position().1 > node.position.position().1 => {
-                        continue;
-                    }
-                    Dir::Down if to.position().1 < node.position.position().1 => {
-                        continue;
-                    }
-                    Dir::Left if to.position().0 > node.position.position().0 => {
-                        continue;
-                    }
-                    Dir::Right if to.position().0 < node.position.position().0 => {
-                        continue;
-                    }
-                    _ => (),
-                }
-                let new_node = node.create_next(next, &self.0.shortest_path(node.inner, dir));
-                stack.push(new_node);
             }
         }
-        assert!(
-            !shortest_path.is_empty(),
-            "No path found from {from:?} to {to:?}"
-        );
-        shortest_path
+        shortest_code
     }
 }
 
@@ -221,15 +157,58 @@ pub fn part_2(input: &Input) -> usize {
     0
 }
 
-trait Keypad: Sized {
+trait Keypad: Sized + Copy + Eq + Debug {
+    const START: Self;
+    const NAME: &'static str;
+
     fn all() -> impl IntoIterator<Item = Self>;
-    fn move_finger(&self, dir: Dir) -> Option<Self>;
+    fn move_finger(self, dir: Dir) -> Option<Self>;
     fn position(self) -> (usize, usize);
 
     fn neighbors(&self) -> impl IntoIterator<Item = (Dir, Self)> {
         Dir::all()
             .into_iter()
             .filter_map(|dir| Some((dir, self.move_finger(dir)?)))
+    }
+
+    fn all_paths(self, to: Self) -> Vec<Path> {
+        let mut all_paths = Vec::<Path>::new();
+        let mut stack = vec![(self, Path::new())];
+        while let Some((pos, mut path)) = stack.pop() {
+            if all_paths.first().is_some_and(|p| p.len() <= path.len()) {
+                continue;
+            }
+            if pos == to {
+                path.push(Dir::A);
+                if all_paths.first().is_some_and(|f| f.len() > path.len()) {
+                    all_paths.clear();
+                }
+                all_paths.push(path);
+                continue;
+            }
+            for (dir, next) in pos.neighbors() {
+                match dir {
+                    Dir::Up if to.position().1 >= pos.position().1 => {
+                        continue;
+                    }
+                    Dir::Down if to.position().1 <= pos.position().1 => {
+                        continue;
+                    }
+                    Dir::Left if to.position().0 >= pos.position().0 => {
+                        continue;
+                    }
+                    Dir::Right if to.position().0 <= pos.position().0 => {
+                        continue;
+                    }
+                    _ => (),
+                }
+                assert!(path.len() <= 5, "Path too long");
+                let mut new_path = path.clone();
+                new_path.push(dir);
+                stack.push((next, new_path));
+            }
+        }
+        all_paths
     }
 }
 
@@ -249,6 +228,9 @@ enum Num {
 }
 
 impl Keypad for Num {
+    const START: Self = Self::A;
+    const NAME: &'static str = "Num";
+
     fn all() -> impl IntoIterator<Item = Self> {
         [
             Self::Zero,
@@ -284,7 +266,7 @@ impl Keypad for Num {
         }
     }
 
-    fn move_finger(&self, dir: Dir) -> Option<Self> {
+    fn move_finger(self, dir: Dir) -> Option<Self> {
         Some(match (self, dir) {
             (Self::Two, Dir::Down) | (Self::A, Dir::Left) => Self::Zero,
             (Self::Two, Dir::Left) | (Self::Four, Dir::Down) => Self::One,
@@ -361,7 +343,10 @@ enum Dir {
 }
 
 impl Keypad for Dir {
-    fn all() -> impl std::iter::IntoIterator<Item = Self> {
+    const START: Self = Self::A;
+    const NAME: &'static str = "Dir";
+
+    fn all() -> impl IntoIterator<Item = Self> {
         [Self::Up, Self::Down, Self::Left, Self::Right, Self::A]
     }
 
@@ -375,7 +360,7 @@ impl Keypad for Dir {
         }
     }
 
-    fn move_finger(&self, dir: Dir) -> Option<Self> {
+    fn move_finger(self, dir: Dir) -> Option<Self> {
         Some(match (self, dir) {
             (Self::Down, Dir::Up) | (Self::A, Dir::Left) => Self::Up,
             (Self::Up, Dir::Down) | (Self::Left, Dir::Right) | (Self::Right, Dir::Left) => {
