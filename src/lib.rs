@@ -1,4 +1,4 @@
-#![warn(clippy::pedantic)]
+#![warn(clippy::correctness, clippy::style, clippy::complexity, clippy::perf, clippy::pedantic, clippy::nursery, clippy::cargo)]
 #![allow(clippy::missing_panics_doc)]
 
 use std::time::SystemTime;
