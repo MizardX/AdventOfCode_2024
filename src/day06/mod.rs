@@ -60,7 +60,7 @@ pub fn part_2(input: &Input) -> usize {
         if new_obstacle == input.guard.pos || input.obstacles.contains(&new_obstacle) {
             continue;
         }
-        if let WalkResult::Loop = do_fast_walk(input, Some(new_obstacle)) {
+        if do_fast_walk(input, Some(new_obstacle)) == WalkResult::Loop {
             loop_counts += 1;
         }
     }
