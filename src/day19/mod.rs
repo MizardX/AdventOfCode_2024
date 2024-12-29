@@ -150,17 +150,17 @@ enum Color {
 impl Color {
     pub const  fn all() -> [Self; 5] {
         [
-            Color::White,
-            Color::Blue,
-            Color::Black,
-            Color::Red,
-            Color::Green,
+            Self::White,
+            Self::Blue,
+            Self::Black,
+            Self::Red,
+            Self::Green,
         ]
     }
 }
 
 impl From<Color> for usize {
-    fn from(color: Color) -> usize {
+    fn from(color: Color) -> Self {
         match color {
             Color::White => 0,
             Color::Blue => 1,

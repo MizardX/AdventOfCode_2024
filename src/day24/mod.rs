@@ -177,25 +177,25 @@ enum GateKind {
 #[expect(dead_code)]
 impl GateKind {
     const fn is_or(self) -> bool {
-        matches!(self, GateKind::Binary(BinOp::Or, _, _))
+        matches!(self, Self::Binary(BinOp::Or, _, _))
     }
     const fn is_and(self) -> bool {
-        matches!(self, GateKind::Binary(BinOp::And, _, _))
+        matches!(self, Self::Binary(BinOp::And, _, _))
     }
     const fn is_xor(self) -> bool {
-        matches!(self, GateKind::Binary(BinOp::Xor, _, _))
+        matches!(self, Self::Binary(BinOp::Xor, _, _))
     }
     const fn is_constant(self) -> bool {
-        matches!(self, GateKind::Constant(_))
+        matches!(self, Self::Constant(_))
     }
 
     const fn is_binary(self) -> bool {
-        matches!(self, GateKind::Binary(_, _, _))
+        matches!(self, Self::Binary(_, _, _))
     }
 
     const fn has_operand(self, operand: usize) -> bool {
         match self {
-            GateKind::Binary(_, lhs, rhs) => lhs == operand || rhs == operand,
+            Self::Binary(_, lhs, rhs) => lhs == operand || rhs == operand,
             _ => false,
         }
     }
@@ -217,53 +217,53 @@ impl GateKind {
 
     const fn as_binary(self) -> Option<(usize, usize)> {
         match self {
-            GateKind::Binary(_, lhs, rhs) => Some((lhs, rhs)),
+            Self::Binary(_, lhs, rhs) => Some((lhs, rhs)),
             _ => None,
         }
     }
     const fn as_and(self) -> Option<(usize, usize)> {
         match self {
-            GateKind::Binary(BinOp::And, lhs, rhs) => Some((lhs, rhs)),
+            Self::Binary(BinOp::And, lhs, rhs) => Some((lhs, rhs)),
             _ => None,
         }
     }
     const fn as_or(self) -> Option<(usize, usize)> {
         match self {
-            GateKind::Binary(BinOp::Or, lhs, rhs) => Some((lhs, rhs)),
+            Self::Binary(BinOp::Or, lhs, rhs) => Some((lhs, rhs)),
             _ => None,
         }
     }
     const fn as_xor(self) -> Option<(usize, usize)> {
         match self {
-            GateKind::Binary(BinOp::Xor, lhs, rhs) => Some((lhs, rhs)),
+            Self::Binary(BinOp::Xor, lhs, rhs) => Some((lhs, rhs)),
             _ => None,
         }
     }
 
     const fn flip(self) -> Option<Self> {
         Some(match self {
-            GateKind::Binary(BinOp::And, lhs, rhs) => GateKind::Binary(BinOp::Or, lhs, rhs),
-            GateKind::Binary(BinOp::Or, lhs, rhs) => GateKind::Binary(BinOp::And, lhs, rhs),
-            GateKind::Binary(BinOp::Xor, lhs, rhs) => GateKind::Binary(BinOp::Xor, lhs, rhs),
+            Self::Binary(BinOp::And, lhs, rhs) => Self::Binary(BinOp::Or, lhs, rhs),
+            Self::Binary(BinOp::Or, lhs, rhs) => Self::Binary(BinOp::And, lhs, rhs),
+            Self::Binary(BinOp::Xor, lhs, rhs) => Self::Binary(BinOp::Xor, lhs, rhs),
             _ => return None,
         })
     }
 
     fn evaluate(self, inputs: &[Option<bool>]) -> Result<bool, usize> {
         Ok(match self {
-            GateKind::None => unreachable!(),
-            GateKind::Constant(value) => value,
-            GateKind::Binary(BinOp::And, lhs, rhs) => {
+            Self::None => unreachable!(),
+            Self::Constant(value) => value,
+            Self::Binary(BinOp::And, lhs, rhs) => {
                 let lhs_value = inputs[lhs].ok_or(lhs)?;
                 let rhs_value = inputs[rhs].ok_or(rhs)?;
                 lhs_value && rhs_value
             }
-            GateKind::Binary(BinOp::Or, lhs, rhs) => {
+            Self::Binary(BinOp::Or, lhs, rhs) => {
                 let lhs_value = inputs[lhs].ok_or(lhs)?;
                 let rhs_value = inputs[rhs].ok_or(rhs)?;
                 lhs_value || rhs_value
             }
-            GateKind::Binary(BinOp::Xor, lhs, rhs) => {
+            Self::Binary(BinOp::Xor, lhs, rhs) => {
                 let lhs_value = inputs[lhs].ok_or(lhs)?;
                 let rhs_value = inputs[rhs].ok_or(rhs)?;
                 lhs_value ^ rhs_value

@@ -147,7 +147,7 @@ impl FromStr for Input {
 
     fn from_str(text: &str) -> Result<Self, Self::Err> {
         let equations = text.lines().map(str::parse).collect::<Result<_, _>>()?;
-        Ok(Input { equations })
+        Ok(Self { equations })
     }
 }
 
@@ -166,7 +166,7 @@ impl FromStr for Equation {
             .split(' ')
             .map(str::parse)
             .collect::<Result<_, _>>()?;
-        Ok(Equation {
+        Ok(Self {
             target_value,
             operands,
         })

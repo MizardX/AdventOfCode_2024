@@ -81,11 +81,11 @@ impl Antenna {
         Self { x, y, freq }
     }
 
-    fn first_antinode(self, other: Antenna, bounds: (usize, usize)) -> Option<(usize, usize)> {
+    fn first_antinode(self, other: Self, bounds: (usize, usize)) -> Option<(usize, usize)> {
         self.antinodes(other, bounds)?.nth(1)
     }
 
-    fn antinodes(self, other: Antenna, bounds: (usize, usize)) -> Option<Antinodes> {
+    fn antinodes(self, other: Self, bounds: (usize, usize)) -> Option<Antinodes> {
         let step = (
             isize::try_from(other.x).ok()? - isize::try_from(self.x).ok()?,
             isize::try_from(other.y).ok()? - isize::try_from(self.y).ok()?,
@@ -101,7 +101,7 @@ impl Antenna {
 
 impl Display for Antenna {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let Antenna { x, y, freq } = *self;
+        let Self { x, y, freq } = *self;
         let freq = freq as char;
         write!(f, "({x}, {y}) freq '{freq}'")
     }

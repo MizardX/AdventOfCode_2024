@@ -74,7 +74,7 @@ impl TryFrom<&[&str]> for Schematic {
                     }
                 }
             }
-            Ok(Schematic::Lock(lock))
+            Ok(Self::Lock(lock))
         } else {
             // Key, has upwards pointing pins
             let mut key = 0;
@@ -87,7 +87,7 @@ impl TryFrom<&[&str]> for Schematic {
                     }
                 }
             }
-            Ok(Schematic::Key(key))
+            Ok(Self::Key(key))
         }
     }
 }

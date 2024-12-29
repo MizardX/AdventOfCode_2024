@@ -384,6 +384,7 @@ impl Keypad for Dir {
         }
     }
 
+    #[expect(clippy::use_self, reason = "`dir` parameter is fixed type [Dir], and does not vary between impls of the [Keypad] trait")]
     fn move_finger(self, dir: Dir) -> Option<Self> {
         Some(match (self, dir) {
             (Self::Down, Dir::Up) | (Self::A, Dir::Left) => Self::Up,
