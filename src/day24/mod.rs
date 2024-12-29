@@ -212,7 +212,7 @@ impl GateKind {
     }
 
     fn children(self) -> Option<[usize; 2]> {
-        self.as_binary().map(|(a, b)| [a, b])
+        self.as_binary().map(Into::into)
     }
 
     const fn as_binary(self) -> Option<(usize, usize)> {
