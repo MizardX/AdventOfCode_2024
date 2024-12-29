@@ -48,7 +48,7 @@ struct ACNode {
 }
 
 impl ACNode {
-    fn new() -> Self {
+    const fn new() -> Self {
         Self {
             children: [None; 5],
             suffix_link: 0,
@@ -148,7 +148,7 @@ enum Color {
 }
 
 impl Color {
-    pub fn all() -> [Color; 5] {
+    pub const  fn all() -> [Self; 5] {
         [
             Color::White,
             Color::Blue,

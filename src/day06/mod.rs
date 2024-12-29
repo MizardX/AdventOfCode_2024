@@ -97,7 +97,7 @@ pub enum Dir {
 
 impl Dir {
     #[must_use]
-    pub fn to_bitmask(self) -> u8 {
+    pub const fn to_bitmask(self) -> u8 {
         match self {
             Self::Up => 0b0001,
             Self::Down => 0b0010,
@@ -136,7 +136,7 @@ impl Guard {
     }
 
     #[must_use]
-    pub fn ahead(&self, input: &Input) -> Option<(u8, u8)> {
+    pub const fn ahead(&self, input: &Input) -> Option<(u8, u8)> {
         let (r, c) = self.pos;
         let (r, c) = match self.dir {
             Dir::Up if r > 0 => (r - 1, c),

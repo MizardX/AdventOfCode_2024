@@ -160,7 +160,7 @@ struct State {
 }
 
 impl State {
-    fn new(register_a: u64, register_b: u64, register_c: u64) -> Self {
+    const fn new(register_a: u64, register_b: u64, register_c: u64) -> Self {
         Self {
             register_a,
             register_b,
@@ -252,7 +252,7 @@ struct Output {
 }
 
 impl Output {
-    fn new(value: u64, shift: u64) -> Self {
+    const fn new(value: u64, shift: u64) -> Self {
         Self { value, shift }
     }
 

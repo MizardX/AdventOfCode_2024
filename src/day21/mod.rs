@@ -85,7 +85,7 @@ fn solve(input: &Input, mut operator_stack: impl Operator<Item = Num>) -> usize 
 #[derive(Debug, Clone)]
 struct Path(Vec<Dir>);
 impl Path {
-    fn new() -> Self {
+    const fn new() -> Self {
         Self(Vec::new())
     }
     fn push(&mut self, dir: Dir) {

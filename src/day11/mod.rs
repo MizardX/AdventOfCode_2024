@@ -50,7 +50,7 @@ fn count_after_split(
     count
 }
 
-fn num_digits(val: u64) -> usize {
+const fn num_digits(val: u64) -> usize {
     let mut digits = 0;
     let mut val = val;
     while val > 0 {

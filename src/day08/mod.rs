@@ -77,7 +77,7 @@ pub struct Antenna {
 }
 
 impl Antenna {
-    fn new(x: usize, y: usize, freq: u8) -> Self {
+    const fn new(x: usize, y: usize, freq: u8) -> Self {
         Self { x, y, freq }
     }
 
@@ -149,7 +149,7 @@ pub struct Input {
 
 impl Input {
     #[must_use]
-    pub fn new(width: usize, height: usize, antennas: Vec<Antenna>) -> Self {
+    pub const fn new(width: usize, height: usize, antennas: Vec<Antenna>) -> Self {
         Self {
             width,
             height,
@@ -160,17 +160,17 @@ impl Input {
 
 impl Input {
     #[must_use]
-    pub fn width(&self) -> usize {
+    pub const fn width(&self) -> usize {
         self.width
     }
 
     #[must_use]
-    pub fn height(&self) -> usize {
+    pub const fn height(&self) -> usize {
         self.height
     }
 
     #[must_use]
-    pub fn includes(&self, x: usize, y: usize) -> bool {
+    pub const fn includes(&self, x: usize, y: usize) -> bool {
         x < self.width && y < self.height
     }
 }

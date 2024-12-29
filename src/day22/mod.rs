@@ -47,7 +47,7 @@ pub fn part_2(input: &Input) -> u64 {
 }
 
 #[expect(clippy::cast_sign_loss, reason = "All values are between -9 and 9")]
-fn to_index(d1: i8, d2: i8, d3: i8, d4: i8) -> usize {
+const fn to_index(d1: i8, d2: i8, d3: i8, d4: i8) -> usize {
     let d1 = (d1 + 9) as usize;
     let d2 = (d2 + 9) as usize;
     let d3 = (d3 + 9) as usize;
@@ -89,7 +89,7 @@ struct PseduoRandom {
 }
 
 impl PseduoRandom {
-    fn new(secret_number: u64) -> Self {
+    const fn new(secret_number: u64) -> Self {
         Self {
             value: secret_number,
         }

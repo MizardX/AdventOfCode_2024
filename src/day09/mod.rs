@@ -117,7 +117,7 @@ pub struct FileEntry {
 }
 
 impl FileEntry {
-    fn with_pos(self, pos: u32) -> Self {
+    const fn with_pos(self, pos: u32) -> Self {
         Self { pos, ..self }
     }
 }
@@ -158,15 +158,15 @@ impl Debug for Entry {
 }
 
 impl Entry {
-    fn new_file(id: u32, pos: u32, size: u32) -> Self {
+    const fn new_file(id: u32, pos: u32, size: u32) -> Self {
         Self::File(FileEntry { id, pos, size })
     }
 
-    fn new_empty(pos: u32, size: u32) -> Self {
+    const fn new_empty(pos: u32, size: u32) -> Self {
         Self::Empty(EmptyEntry { pos, size })
     }
 
-    fn with_size(self, size: u32) -> Self {
+    const fn with_size(self, size: u32) -> Self {
         match self {
             Self::File(FileEntry { id, pos, .. }) => Self::new_file(id, pos, size),
             Self::Empty(EmptyEntry { pos, .. }) => Self::new_empty(pos, size),

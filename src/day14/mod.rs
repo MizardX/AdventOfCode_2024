@@ -78,7 +78,7 @@ pub fn part_2(input: &Input, room_size: (i32, i32)) -> i32 {
 }
 
 #[expect(clippy::similar_names)]
-fn egcd(m: i64, n: i64) -> (i64, i64, i64) {
+const fn egcd(m: i64, n: i64) -> (i64, i64, i64) {
     let (mut current, mut gcd) = (m, n);
     let (mut coeff_m1, mut coeff_n1) = (1, 0); // such that coeff_m1 * m + coeff_n1 * n = current
     let (mut coeff_m2, mut coeff_n2) = (0, 1); // such that coeff_m2 * m + coeff_n2 * n = gcd
@@ -111,7 +111,7 @@ struct Stats {
 }
 
 impl Stats {
-    fn new() -> Self {
+    const fn new() -> Self {
         Self {
             sum: 0,
             sum_squared: 0,
@@ -127,17 +127,17 @@ impl Stats {
     }
 
     #[expect(clippy::cast_possible_truncation)]
-    fn mean(&self) -> i32 {
+    const fn mean(&self) -> i32 {
         (self.sum / self.count) as i32
     }
 
     #[expect(clippy::cast_possible_truncation)]
-    fn variance(&self) -> i32 {
+    const fn variance(&self) -> i32 {
         let mean = self.sum / self.count;
         (self.sum_squared / self.count - mean * mean) as i32
     }
 
-    fn is_outlier(&self, value: i32, sigma: i32) -> bool {
+    const fn is_outlier(&self, value: i32, sigma: i32) -> bool {
         if self.count < 2 {
             return false;
         }
@@ -155,7 +155,7 @@ pub struct Robot {
 }
 
 impl Robot {
-    fn wrap(&self, time: i32, room_size: (i32, i32)) -> (i32, i32) {
+    const fn wrap(&self, time: i32, room_size: (i32, i32)) -> (i32, i32) {
         let (px, py) = self.position;
         let (vx, vy) = self.velocity;
         let (w, h) = room_size;

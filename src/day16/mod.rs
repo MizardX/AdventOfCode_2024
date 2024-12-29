@@ -63,7 +63,7 @@ enum Tile {
 }
 
 impl Tile {
-    fn is_passable(self) -> bool {
+    const fn is_passable(self) -> bool {
         match self {
             Self::Empty | Self::Start | Self::End => true,
             Self::Wall => false,

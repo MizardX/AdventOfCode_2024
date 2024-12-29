@@ -50,7 +50,7 @@ struct ClawMachine {
 }
 
 impl ClawMachine {
-    fn button_presses(&self, offset: (i64, i64)) -> Option<(i64, i64)> {
+    const fn button_presses(&self, offset: (i64, i64)) -> Option<(i64, i64)> {
         // Press A X times, then B Y times to reach the prize
         // A * X + B * Y = Prize
         // X = (Prize.y * B.x - Prize.x * B.y) / (A.x * B.y - A.y * B.x)
