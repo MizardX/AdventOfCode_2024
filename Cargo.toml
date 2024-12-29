@@ -2,6 +2,12 @@
 name = "aoc_rust_2024"
 version = "0.1.0"
 edition = "2021"
+description = "Advent of Code 2024 in Rust"
+license = "MIT"
+repository = "https://github.com/MizardX/AdventOfCode_2024"
+readme = "README.md"
+keywords = ["advent-of-code", "aoc"]
+categories = ["algorithms"]
 
 [dependencies]
 thiserror = "2.0.3"
