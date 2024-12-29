@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::fmt::Display;
 use std::str::FromStr;
 use thiserror::Error;
 
@@ -30,13 +31,13 @@ pub fn run() {
 
 #[must_use]
 pub fn part_1(input: &Input) -> usize {
-    let mut state = input.initial_state.clone();
+    let mut state = State::from_input(input);
     for mv in &input.moves {
         let Some(ahead) = state.robot.move_by(*mv) else {
             // Moved off the board
             continue;
         };
-        if let Some(&Tile::Wall) = input.grid.get(ahead.x, ahead.y) {
+        if matches!(input.grid.get(ahead.x, ahead.y), Some(&Tile::Wall)) {
             // Hit a wall
             continue;
         }
@@ -56,16 +57,19 @@ pub fn part_1(input: &Input) -> usize {
 
 #[must_use]
 pub fn part_2(input: &Input) -> usize {
-    let mut state = ExpandedState::from_state(&input.initial_state);
+    let mut state = ExpandedState::from_input(input);
     for &mv in &input.moves {
         let Some(ahead) = state.robot.move_by(mv) else {
-            continue; // Moved off the board
+            // Moved off the board
+            continue;
         };
-        if let Some(&Tile::Wall) = input.grid.get(ahead.x / 2, ahead.y) {
-            continue; // Hit a wall
+        if matches!(input.grid.get(ahead.x / 2, ahead.y), Some(&Tile::Wall)) {
+            // Hit a wall
+            continue;
         }
         let Some(pushable_boxes) = state.pushable_boxes(mv, input) else {
-            continue; // Hit an unpushable box
+            // Hit an unpushable box
+            continue;
         };
         // Remove old positions, so they do not overlap with new positions in the set
         for &pushable_box in &pushable_boxes {
@@ -110,12 +114,6 @@ enum Move {
     Right,
 }
 
-impl Move {
-    fn is_horizontal(self) -> bool {
-        matches!(self, Self::Left | Self::Right)
-    }
-}
-
 impl TryFrom<u8> for Move {
     type Error = ParseInputError;
 
@@ -138,27 +136,29 @@ struct Position {
 }
 
 impl Position {
-    fn new(x: usize, y: usize) -> Self {
+    const fn new(x: usize, y: usize) -> Self {
         Self { x, y }
     }
 
     /// Move by a single step in a direction. If this would result in a negative position, return `None`.
-    fn move_by(&self, mv: Move) -> Option<Self> {
+    const fn move_by(&self, mv: Move) -> Option<Self> {
         Some(match mv {
-            Move::Up => Self::new(self.x, self.y.checked_sub(1)?),
+            Move::Up if self.y == 0 => return None,
+            Move::Up => Self::new(self.x, self.y - 1),
             Move::Down => Self::new(self.x, self.y + 1),
-            Move::Left => Self::new(self.x.checked_sub(1)?, self.y),
+            Move::Left if self.x == 0 => return None,
+            Move::Left => Self::new(self.x - 1, self.y),
             Move::Right => Self::new(self.x + 1, self.y),
         })
     }
 
     /// A checksum for the position
-    fn gps_coordinate(&self) -> usize {
+    const fn gps_coordinate(&self) -> usize {
         self.y * 100 + self.x
     }
 
     /// Expand the position by doubling the x coordinate
-    fn expand(&self) -> Self {
+    const fn expand(&self) -> Self {
         Self::new(self.x * 2, self.y)
     }
 }
@@ -168,17 +168,27 @@ impl Position {
 pub struct Input {
     grid: Grid<Tile>,
     moves: Vec<Move>,
-    initial_state: State,
-}
-
-/// The dynamic state of the simulation
-#[derive(Debug, Clone)]
-pub struct State {
     robot: Position,
     boxes: HashSet<Position>,
 }
 
-impl State {
+/// The dynamic state of the simulation
+#[derive(Debug, Clone)]
+pub struct State<'a> {
+    input: &'a Input,
+    robot: Position,
+    boxes: HashSet<Position>,
+}
+
+impl<'a> State<'a> {
+    fn from_input(input: &'a Input) -> Self {
+        Self {
+            input,
+            robot: input.robot,
+            boxes: input.boxes.clone(),
+        }
+    }
+
     /// Find the next empty position in a direction
     fn next_empty(&self, mv: Move, input: &Input) -> Option<Position> {
         let mut pos = self.robot;
@@ -193,16 +203,49 @@ impl State {
     }
 }
 
-struct ExpandedState {
+impl Display for State<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for y in 0..self.input.grid.height() {
+            for x in 0..self.input.grid.width() {
+                let pos = Position::new(x, y);
+                if pos == self.robot {
+                    write!(f, "@")?;
+                } else if self.boxes.contains(&pos) {
+                    write!(f, "O")?;
+                } else if let Some(&tile) = self.input.grid.get(x, y) {
+                    match tile {
+                        Tile::Empty => write!(f, ".")?,
+                        Tile::Wall => write!(f, "#")?,
+                    }
+                } else {
+                    write!(f, " ")?;
+                }
+            }
+            writeln!(f)?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone)]
+struct ExpandedState<'a> {
+    input: &'a Input,
     robot: Position,
     boxes: HashSet<Position>,
 }
 
-impl ExpandedState {
-    pub fn from_state(state: &State) -> Self {
+#[derive(Debug, Clone, Copy)]
+enum HalfBox {
+    Left,
+    Right,
+}
+
+impl<'a> ExpandedState<'a> {
+    pub fn from_input(input: &'a Input) -> Self {
         Self {
-            robot: state.robot.expand(),
-            boxes: state.boxes.iter().map(Position::expand).collect(),
+            input,
+            robot: input.robot.expand(),
+            boxes: input.boxes.iter().map(Position::expand).collect(),
         }
     }
 
@@ -217,27 +260,68 @@ impl ExpandedState {
             if matches!(input.grid.get(ahead.x / 2, ahead.y)?, Tile::Wall) {
                 return None;
             }
-            if self.boxes.contains(&ahead) {
-                // Left half of a box
-                boxes.push(ahead);
-                if mv.is_horizontal() {
-                    pending.push(ahead.move_by(mv)?);
-                } else {
+            match (self.get_box(ahead), mv) {
+                (Some(HalfBox::Left), Move::Right) => {
+                    boxes.push(ahead);
+                    pending.push(ahead_right);
+                }
+                (Some(HalfBox::Right), Move::Left) => {
+                    boxes.push(ahead_left);
+                    pending.push(ahead_left);
+                }
+                (Some(HalfBox::Left), Move::Up | Move::Down) => {
+                    boxes.push(ahead);
                     pending.push(ahead);
                     pending.push(ahead_right);
                 }
-            } else if self.boxes.contains(&ahead_left) {
-                // Right half of a box
-                boxes.push(ahead_left);
-                if mv.is_horizontal() {
-                    pending.push(ahead.move_by(mv)?);
-                } else {
-                    pending.push(ahead);
+                (Some(HalfBox::Right), Move::Up | Move::Down) => {
+                    boxes.push(ahead_left);
                     pending.push(ahead_left);
+                    pending.push(ahead);
                 }
+                _ => (),
             }
         }
         Some(boxes)
+    }
+
+    fn get_box(&self, pos: Position) -> Option<HalfBox> {
+        if self.boxes.contains(&pos) {
+            Some(HalfBox::Left)
+        } else if pos.move_by(Move::Left).is_none() {
+            None
+        } else if self.boxes.contains(&pos.move_by(Move::Left)?) {
+            Some(HalfBox::Right)
+        } else {
+            None
+        }
+    }
+}
+
+impl Display for ExpandedState<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for y in 0..self.input.grid.height() {
+            for x in 0..self.input.grid.width() * 2 {
+                let pos = Position::new(x, y);
+                if pos == self.robot {
+                    write!(f, "@")?;
+                } else if let Some(half) = self.get_box(pos) {
+                    match half {
+                        HalfBox::Left => write!(f, "[")?,
+                        HalfBox::Right => write!(f, "]")?,
+                    }
+                } else if let Some(&tile) = self.input.grid.get(x / 2, y) {
+                    match tile {
+                        Tile::Empty => write!(f, ".")?,
+                        Tile::Wall => write!(f, "#")?,
+                    }
+                } else {
+                    write!(f, " ")?;
+                }
+            }
+            writeln!(f)?;
+        }
+        Ok(())
     }
 }
 
@@ -279,14 +363,11 @@ impl FromStr for Input {
             .flat_map(str::bytes)
             .map(u8::try_into)
             .collect::<Result<Vec<_>, _>>()?;
-        let initial_state = State {
-            robot: robot.ok_or(ParseInputError::MissingRobot)?,
-            boxes,
-        };
         Ok(Self {
             grid,
             moves,
-            initial_state,
+            robot: robot.ok_or(ParseInputError::MissingRobot)?,
+            boxes,
         })
     }
 }
